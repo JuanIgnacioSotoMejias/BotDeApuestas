@@ -44,15 +44,26 @@ class DashboardAPIHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         # API GET: Retornar historial completo de banca
         if self.path == "/api/banca":
-            banca_srv = GestorBancaService()
-            datos = banca_srv.cargar_historial()
-            if datos:
-                self.send_response(200)
+            try:
+                banca_srv = GestorBancaService()
+                datos = banca_srv.cargar_historial()
+                if datos:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(json.dumps(datos, ensure_ascii=False).encode("utf-8"))
+                else:
+                    self.send_error(500, "Error al cargar la base de datos de apuestas.")
+            except Exception as e:
+                import traceback
+                self.send_response(500)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.end_headers()
-                self.wfile.write(json.dumps(datos, ensure_ascii=False).encode("utf-8"))
-            else:
-                self.send_error(500, "Error al cargar la base de datos de apuestas.")
+                err_info = {
+                    "error": str(e),
+                    "traceback": traceback.format_exc()
+                }
+                self.wfile.write(json.dumps(err_info, ensure_ascii=False).encode("utf-8"))
             return
 
         # Limpiar query parameters del path
