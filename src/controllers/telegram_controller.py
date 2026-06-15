@@ -167,8 +167,37 @@ class TelegramController:
             JUGADAS_PATH = os.path.join(base_dir, "jugadas_lunes_15.json")
             
             if not os.path.exists(JUGADAS_PATH):
-                self.bot.send_message(chat_id, "💡 *No hay picks oficiales registrados para la jornada de hoy todavía.*", parse_mode="Markdown")
-                return
+                # Fallback: Cargar directamente desde la Base de Datos persistente
+                try:
+                    banca_srv = GestorBancaService()
+                    datos = banca_srv.cargar_historial()
+                    activas = datos.get("apuestas_activas", []) if datos else []
+                    
+                    if not activas:
+                        self.bot.send_message(chat_id, "💡 *No hay picks oficiales registrados para la jornada de hoy todavía.*", parse_mode="Markdown")
+                        return
+                        
+                    fecha_hoy = datetime.date.today().strftime("%Y-%m-%d")
+                    reporte = (
+                        f"📅 *Combinadas Oficiales (Cargadas de BD):* `{fecha_hoy}`\n"
+                        "━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    )
+                    for tkt in activas:
+                        nombre = tkt.get("tipo_parley", "Combinada")
+                        cuota = tkt.get("cuota", 1.0)
+                        inversion = tkt.get("inversion", 1.0)
+                        
+                        reporte += f"🔥 *{nombre.upper()}* (Cuota: *@{cuota:.2f}* | Inversión: `${inversion:.2f} USD`)\n"
+                        for sel in tkt.get("selecciones", []):
+                            reporte += f"  • _{sel.get('partido')}_ — *{sel.get('pronostico')}* (@{sel.get('cuota')})\n"
+                        reporte += "\n"
+                        
+                    self.bot.send_message(chat_id, reporte, parse_mode="Markdown")
+                    return
+                except Exception as e_db:
+                    print(f"Error cargando picks desde BD: {e_db}")
+                    self.bot.send_message(chat_id, "💡 *No hay picks oficiales registrados para la jornada de hoy todavía.*", parse_mode="Markdown")
+                    return
                 
             try:
                 with open(JUGADAS_PATH, "r", encoding="utf-8") as f:

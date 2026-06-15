@@ -26,7 +26,7 @@ if BASE_DIR not in sys.path:
 from src.services.gestor_banca_service import GestorBancaService
 from src.services.telegram_service import TelegramService
 
-PORT = 8000
+PORT = int(os.environ.get("PORT", 8000))
 DASHBOARD_DIR = os.path.join(BASE_DIR, "dashboard")
 
 class DashboardAPIHandler(BaseHTTPRequestHandler):
