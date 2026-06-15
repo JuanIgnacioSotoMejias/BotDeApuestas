@@ -316,7 +316,7 @@ class GestorBancaService:
             
             # Cargar predicciones de IA históricas (tabla predicciones_ia)
             from src.database.models import PrediccionIA
-            stmt_preds = select(PrediccionIA).order_by(PrediccionIA.fecha.desc()).limit(30)
+            stmt_preds = select(PrediccionIA).order_by(PrediccionIA.fecha.desc()).limit(150)
             res_preds = await session.execute(stmt_preds)
             preds = res_preds.scalars().all()
             predicciones_json = []

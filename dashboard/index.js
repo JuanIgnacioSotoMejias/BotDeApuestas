@@ -717,8 +717,92 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (!dataBanca) return;
         const activas = dataBanca.apuestas_activas || [];
         const archivadas = dataBanca.apuestas_archivadas || [];
+        const predicciones = dataBanca.predicciones_ia || [];
         
-        let todos = [...activas, ...archivadas];
+        // 1. Agrupar las predicciones de IA por fecha y tipo_parley
+        const groupedSuggested = {};
+        predicciones.forEach(p => {
+            const dateStr = p.fecha ? p.fecha.split("T")[0] : "Sin Fecha";
+            const tipo = p.tipo_parley || "Combinada Segura";
+            const key = `${dateStr}_${tipo}`;
+            
+            if (!groupedSuggested[key]) {
+                groupedSuggested[key] = {
+                    ticket_id: `SUG-${tipo.replace(/\s+/g, '')}-${dateStr}`,
+                    fecha_jornada: dateStr,
+                    tipo_parley: tipo,
+                    cuota: 1.0,
+                    estado: "Pendiente",
+                    selecciones: [],
+                    isSuggestedOnly: true,
+                    inversion: 0.0,
+                    retorno_potencial: 0.0
+                };
+            }
+            
+            groupedSuggested[key].selecciones.push({
+                partido: p.partido,
+                pronostico: p.pronostico,
+                cuota: parseFloat(p.cuota),
+                estado_seleccion: p.estado === "Ganado" ? "Ganado" : (p.estado === "Perdido" ? "Perdido" : (p.estado === "Anulado" ? "Anulado" : "Pendiente")),
+                resultado_partido: p.resultado_partido
+            });
+        });
+
+        // 2. Para cada sugerencia agrupada, calcular su cuota combinada y su estado consolidado
+        Object.values(groupedSuggested).forEach(gp => {
+            let cuotaTotal = 1.0;
+            let algunPerdido = false;
+            let algunPendiente = false;
+            let todoAnulado = true;
+            
+            gp.selecciones.forEach(sel => {
+                cuotaTotal *= sel.cuota;
+                if (sel.estado_seleccion === "Perdido") {
+                    algunPerdido = true;
+                    todoAnulado = false;
+                } else if (sel.estado_seleccion === "Pendiente") {
+                    algunPendiente = true;
+                    todoAnulado = false;
+                } else if (sel.estado_seleccion === "Ganado") {
+                    todoAnulado = false;
+                }
+            });
+            
+            gp.cuota = parseFloat(cuotaTotal.toFixed(2));
+            
+            if (algunPerdido) {
+                gp.estado = "Perdida";
+            } else if (algunPendiente) {
+                gp.estado = "Pendiente";
+            } else if (todoAnulado) {
+                gp.estado = "Anulada";
+            } else {
+                gp.estado = "Ganada";
+            }
+        });
+
+        // 3. Filtrar las sugerencias que el usuario YA jugó como ticket
+        const playedTickets = [...activas, ...archivadas];
+        const finalSuggestedParleys = Object.values(groupedSuggested).filter(gp => {
+            const isPlayed = playedTickets.some(t => {
+                const dateMatch = t.fecha_jornada === gp.fecha_jornada;
+                const tType = t.tipo_parley.toLowerCase();
+                const gpType = gp.tipo_parley.toLowerCase();
+                const typeMatch = tType.includes(gpType) || gpType.includes(tType);
+                return dateMatch && typeMatch;
+            });
+            return !isPlayed;
+        });
+
+        // 4. Unir todos los parleys (jugados y sugeridos no jugados)
+        let todos = [
+            ...activas.map(t => ({ ...t, isSuggestedOnly: false })),
+            ...archivadas.map(t => ({ ...t, isSuggestedOnly: false })),
+            ...finalSuggestedParleys
+        ];
+        
+        // 5. Ordenar por ID descendente
         todos.sort((a, b) => b.ticket_id.localeCompare(a.ticket_id));
         
         if (parleyFilter !== "all") {
@@ -733,7 +817,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         
         todos.forEach(tkt => {
-            const isSegura = tkt.tipo_parley.toLowerCase().includes("segura");
             const isGanada = tkt.estado === "Ganada";
             const isPerdida = tkt.estado === "Perdida";
             const isAnulada = tkt.estado === "Anulada";
@@ -746,34 +829,68 @@ document.addEventListener("DOMContentLoaded", async () => {
             if (isGanada) {
                 statusBadgeHtml = `<span class="badge-status">✅ Ganada</span>`;
                 leftBorderColor = "var(--accent-green)";
-                const netWin = tkt.retorno_realizado - tkt.inversion;
-                profitText = `Resultado: <b>+${netWin.toFixed(2)} USD (Ganancia)</b>`;
+                if (tkt.isSuggestedOnly) {
+                    profitText = `Retroalimentación: <b style="color: var(--accent-green);">Sugerencia Acertada</b>`;
+                } else {
+                    const netWin = tkt.retorno_realizado - tkt.inversion;
+                    profitText = `Resultado: <b>+${netWin.toFixed(2)} USD (Ganancia)</b>`;
+                }
                 profitClass = "color: var(--accent-green);";
             } else if (isPerdida) {
                 statusBadgeHtml = `<span class="badge-status arriesgada">❌ Perdida</span>`;
                 leftBorderColor = "var(--accent-red)";
-                profitText = `Resultado: <b>-${tkt.inversion.toFixed(2)} USD (Pérdida)</b>`;
+                if (tkt.isSuggestedOnly) {
+                    profitText = `Retroalimentación: <b style="color: var(--accent-red);">Sugerencia Fallada</b>`;
+                } else {
+                    profitText = `Resultado: <b>-${tkt.inversion.toFixed(2)} USD (Pérdida)</b>`;
+                }
                 profitClass = "color: var(--accent-red);";
             } else if (isAnulada) {
                 statusBadgeHtml = `<span class="badge-status" style="background: rgba(156,163,175,0.2); color: #9ca3af;">🔄 Anulada</span>`;
                 leftBorderColor = "var(--text-muted)";
-                profitText = `Resultado: <b>$0.00 USD (Reembolsado)</b>`;
+                if (tkt.isSuggestedOnly) {
+                    profitText = `Retroalimentación: <b style="color: #9ca3af;">Sugerencia Anulada</b>`;
+                } else {
+                    profitText = `Resultado: <b>$0.00 USD (Reembolsado)</b>`;
+                }
                 profitClass = "color: var(--text-secondary);";
             } else {
                 statusBadgeHtml = `<span class="badge-status" style="background: rgba(14,165,233,0.2); color: var(--accent-blue);">⏳ Pendiente</span>`;
                 leftBorderColor = "var(--accent-blue)";
-                profitText = `Retorno Potencial: <b>$${tkt.retorno_potencial.toFixed(2)} USD</b>`;
+                if (tkt.isSuggestedOnly) {
+                    profitText = `Retroalimentación: <b style="color: var(--accent-blue);">Pendiente</b>`;
+                } else {
+                    profitText = `Retorno Potencial: <b>$${tkt.retorno_potencial.toFixed(2)} USD</b>`;
+                }
                 profitClass = "color: var(--accent-blue);";
             }
             
+            // Título y borde según si fue jugado o sólo sugerido
+            let cardTitle = "";
+            let extraBadgeHtml = "";
+            let borderStyle = "solid";
+            
+            if (tkt.isSuggestedOnly) {
+                cardTitle = `🤖 Sugerido (${tkt.tipo_parley})`;
+                extraBadgeHtml = `<span class="badge-status" style="background: rgba(139,92,246,0.15); color: var(--accent-purple); margin-right: 8px;">No Jugado</span>`;
+                borderStyle = "dashed";
+            } else {
+                cardTitle = `🎫 Ticket ${tkt.ticket_id}`;
+                extraBadgeHtml = `<span class="badge-status" style="background: rgba(16,185,129,0.15); color: var(--accent-green); margin-right: 8px;">Jugado</span>`;
+                borderStyle = "solid";
+            }
+            
             let html = `
-                <div class="ticket-card" style="border-left: 3px solid ${leftBorderColor}; margin-bottom: 15px;">
+                <div class="ticket-card" style="border-left: 3px ${borderStyle} ${leftBorderColor}; margin-bottom: 15px; background: ${tkt.isSuggestedOnly ? 'rgba(139, 92, 246, 0.015)' : 'rgba(255, 255, 255, 0.02)'};">
                     <div class="ticket-header">
                         <div style="display: flex; flex-direction: column; gap: 4px;">
-                            <h3 style="font-family: 'Outfit', sans-serif; font-size: 1.1rem; font-weight: 700;">🎫 Ticket ${tkt.ticket_id}</h3>
+                            <h3 style="font-family: 'Outfit', sans-serif; font-size: 1.1rem; font-weight: 700; color: ${tkt.isSuggestedOnly ? '#c084fc' : 'var(--text-primary)'};">${cardTitle}</h3>
                             <span style="font-size: 0.75rem; color: var(--text-secondary);">${tkt.tipo_parley} | Jornada: ${tkt.fecha_jornada}</span>
                         </div>
-                        ${statusBadgeHtml}
+                        <div style="display: flex; align-items: center;">
+                            ${extraBadgeHtml}
+                            ${statusBadgeHtml}
+                        </div>
                     </div>
                     <div class="selections-list">
             `;
@@ -808,10 +925,12 @@ document.addEventListener("DOMContentLoaded", async () => {
                 `;
             });
             
+            const inversionStr = tkt.isSuggestedOnly ? `<span style="color: var(--text-muted); font-style: italic;">No Jugado</span>` : `<b>$${tkt.inversion.toFixed(2)} USD</b>`;
+            
             html += `
                     </div>
                     <div class="ticket-footer" style="background: rgba(255,255,255,0.01); border-top: 1px dashed rgba(255,255,255,0.05); padding-top: 12px; margin-top: 12px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
-                        <span class="ticket-meta">Inversión: <b>$${tkt.inversion.toFixed(2)} USD</b> | Cuota Combinada: <b>x${tkt.cuota.toFixed(2)} (${decimalToAmerican(tkt.cuota)})</b></span>
+                        <span class="ticket-meta">Inversión: ${inversionStr} | Cuota Combinada: <b>x${tkt.cuota.toFixed(2)} (${decimalToAmerican(tkt.cuota)})</b></span>
                         <span class="ticket-odds" style="${profitClass}">${profitText}</span>
                     </div>
                 </div>
