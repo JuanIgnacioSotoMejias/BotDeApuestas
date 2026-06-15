@@ -669,6 +669,174 @@ class GestorBancaService:
     def actualizar_resultados_deportivos(self):
         return run_async(self.actualizar_resultados_deportivos_async())
 
+    async def actualizar_resultados_automatico_async(self):
+        """
+        Consulta la API y liquida de forma automática los partidos y parleys
+        si han transcurrido más de 125 minutos desde su inicio (partido finalizado + 20 min).
+        """
+        import urllib.request
+        from sqlalchemy import select
+        from src.database.models import PrediccionIA, Evento, Ticket, TicketSeleccion
+        from src.services.resultados_api_service import ResultadosAPIService
+        from src.database.session import async_session_maker
+        
+        print("🔄 [AutoEvaluador] Comprobando partidos finalizados...")
+        
+        # 1. Obtener la lista de todos los partidos pendientes de liquidar
+        datos = await self.cargar_historial_async()
+        if not datos:
+            return
+        activas = datos.get("apuestas_activas", [])
+        
+        async with async_session_maker() as session:
+            stmt_preds = select(PrediccionIA).where(PrediccionIA.estado == "Pendiente")
+            res_preds = await session.execute(stmt_preds)
+            pending_preds = res_preds.scalars().all()
+            
+        partidos_pendientes = set()
+        for tkt in activas:
+            for sel in tkt.get("selecciones", []):
+                partidos_pendientes.add(sel["partido"])
+        for pred in pending_preds:
+            partidos_pendientes.add(pred.partido)
+            
+        if not partidos_pendientes:
+            return
+            
+        # 2. Consultar la API de partidos
+        api_url = "https://worldcupjson.net/matches"
+        try:
+            req = urllib.request.Request(
+                api_url,
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
+            with urllib.request.urlopen(req, timeout=10) as response:
+                matches = json.loads(response.read().decode("utf-8"))
+        except Exception as e:
+            print(f"⚠️ [AutoEvaluador] Error al consultar API de partidos: {e}")
+            return
+            
+        # 3. Filtrar partidos terminados hace más de 20 minutos (kickoff + 125 min)
+        resultados_a_aplicar = {}
+        now = datetime.datetime.now(datetime.timezone.utc)
+        
+        for partido_p in partidos_pendientes:
+            if " vs. " in partido_p:
+                home_p, away_p = partido_p.split(" vs. ", 1)
+            elif " vs " in partido_p:
+                home_p, away_p = partido_p.split(" vs ", 1)
+            else:
+                home_p, away_p = partido_p, ""
+                
+            for match in matches:
+                home_team = match.get("home_team", {}).get("name", "").lower()
+                away_team = match.get("away_team", {}).get("name", "").lower()
+                
+                if (home_p.lower() in home_team or home_team in home_p.lower()) and \
+                   (away_p.lower() in away_team or away_team in away_p.lower()):
+                    
+                    status = match.get("status", "")
+                    finalizado = status.lower() in ["completed", "final", "finished"]
+                    
+                    if finalizado:
+                        dt_str = match.get("datetime")
+                        if dt_str:
+                            try:
+                                kickoff = datetime.datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+                                # 125 minutos = 105 minutos de partido + 20 minutos de espera
+                                if now >= kickoff + datetime.timedelta(minutes=125):
+                                    g_home = match.get("home_team", {}).get("goals")
+                                    g_away = match.get("away_team", {}).get("goals")
+                                    if g_home is not None and g_away is not None:
+                                        resultados_a_aplicar[partido_p] = (g_home, g_away)
+                                        print(f"🎯 [AutoEvaluador] Partido '{partido_p}' apto para liquidación automática ({g_home}-{g_away}).")
+                            except Exception as e_parse:
+                                print(f"⚠️ [AutoEvaluador] Error al parsear fecha del partido: {e_parse}")
+                    break
+                    
+        if not resultados_a_aplicar:
+            return
+            
+        # 4. Asentar los resultados de tickets activos en memoria y guardarlos
+        modificado = False
+        apuestas_liquidadas_ids = []
+        for tkt in list(activas):
+            tkt_id = tkt.get("ticket_id")
+            resultados_tkt = {}
+            tkt_apto = True
+            
+            for sel in tkt.get("selecciones", []):
+                partido = sel.get("partido")
+                if partido in resultados_a_aplicar:
+                    g_home, g_away = resultados_a_aplicar[partido]
+                    if " vs. " in partido:
+                        h, a = partido.split(" vs. ", 1)
+                    elif " vs " in partido:
+                        h, a = partido.split(" vs ", 1)
+                    else:
+                        h, a = partido, ""
+                    estado_sel = evaluar_pronostico(sel.get("pronostico"), h, a, g_home, g_away)
+                    resultados_tkt[partido] = {
+                        "estado": estado_sel,
+                        "marcador": f"{g_home}-{g_away}"
+                    }
+                else:
+                    tkt_apto = False
+                    break
+                    
+            if tkt_apto and resultados_tkt:
+                exito = self.asentar_ticket(datos, tkt_id, resultados_tkt)
+                if exito:
+                    apuestas_liquidadas_ids.append(tkt_id)
+                    modificado = True
+                    
+        if modificado:
+            await self.guardar_historial_async(datos)
+            
+        # 5. Asentar los resultados de predicciones de IA en la base de datos
+        async with async_session_maker() as session:
+            stmt = select(PrediccionIA).where(
+                PrediccionIA.partido.in_(list(resultados_a_aplicar.keys())),
+                PrediccionIA.estado == "Pendiente"
+            )
+            res_preds = await session.execute(stmt)
+            pending_preds_to_update = res_preds.scalars().all()
+            
+            predicciones_liquidadas_info = []
+            for pred in pending_preds_to_update:
+                g_home, g_away = resultados_a_aplicar[pred.partido]
+                if " vs. " in pred.partido:
+                    h, a = pred.partido.split(" vs. ", 1)
+                elif " vs " in pred.partido:
+                    h, a = pred.partido.split(" vs ", 1)
+                else:
+                    h, a = pred.partido, ""
+                estado_pred = evaluar_pronostico(pred.pronostico, h, a, g_home, g_away)
+                pred.estado = "Ganado" if estado_pred == "Ganado" else ("Perdido" if estado_pred == "Perdido" else "Anulado")
+                pred.resultado_partido = f"{g_home}-{g_away}"
+                predicciones_liquidadas_info.append(f"{pred.partido} ({pred.pronostico}) -> {pred.estado}")
+                
+            await session.commit()
+            
+        # 6. Notificar a Telegram si hubo liquidaciones
+        if apuestas_liquidadas_ids or predicciones_liquidadas_info:
+            try:
+                from src.services.telegram_service import TelegramService
+                tg = TelegramService()
+                datos_actuales = await self.cargar_historial_async()
+                tg.enviar_reporte_banca(datos_actuales)
+                
+                msg = "🔄 *Sincronización Automática de Resultados (Auto-Liquidado 20m)* 🔄\n"
+                msg += "━━━━━━━━━━━━━━━━━━━━━\n"
+                if apuestas_liquidadas_ids:
+                    msg += f"• *Apuestas Liquidadas:* {', '.join(apuestas_liquidadas_ids)}\n"
+                if predicciones_liquidadas_info:
+                    msg += f"• *Predicciones Liquidadas:* {len(predicciones_liquidadas_info)}\n"
+                msg += "━━━━━━━━━━━━━━━━━━━━━"
+                tg.enviar_mensaje(msg)
+            except Exception as e_tg:
+                print(f"⚠️ [AutoEvaluador] Error al notificar por Telegram: {e_tg}")
+
 
 def evaluar_pronostico(pronostico, home_name, away_name, g_home, g_away):
     """

@@ -515,6 +515,27 @@ class DashboardAPIHandler(BaseHTTPRequestHandler):
         self.send_error(404, "Endpoint de API no encontrado.")
 
 def run_server():
+    # Iniciar bucle de auto-evaluación en segundo plano
+    import threading
+    import time
+    
+    def loop_auto_evaluacion():
+        print("🔄 [AutoEvaluador] Bucle de auto-evaluación iniciado.")
+        # Esperar 10 segundos a que el servidor termine de levantarse
+        time.sleep(10)
+        while True:
+            try:
+                banca_srv = GestorBancaService()
+                from src.services.gestor_banca_service import run_async
+                run_async(banca_srv.actualizar_resultados_automatico_async())
+            except Exception as e:
+                print(f"⚠️ [AutoEvaluador] Error en el bucle: {e}")
+            # Comprobar cada 5 minutos (300 segundos)
+            time.sleep(300)
+            
+    thread = threading.Thread(target=loop_auto_evaluacion, daemon=True)
+    thread.start()
+
     server_address = ('', PORT)
     httpd = HTTPServer(server_address, DashboardAPIHandler)
     print(f"📡 Servidor API del Dashboard iniciado en http://localhost:{PORT} ...")
