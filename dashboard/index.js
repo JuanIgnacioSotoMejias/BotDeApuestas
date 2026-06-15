@@ -14,12 +14,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     
     // Elementos de la vista Admin/Predicciones
     const panelVisual = document.getElementById("visual-panel");
+    const panelParleys = document.getElementById("parleys-panel");
     const panelPredictions = document.getElementById("predictions-panel");
     const panelAdmin = document.getElementById("admin-panel");
     
     const tabVisualBtn = document.getElementById("tab-btn-visual");
+    const tabParleysBtn = document.getElementById("tab-btn-parleys");
     const tabPredictionsBtn = document.getElementById("tab-btn-predictions");
     const tabAdminBtn = document.getElementById("tab-btn-admin");
+    
+    const containerParleysHistory = document.getElementById("parleys-history-container");
+    let parleyFilter = "all";
     
     const containerAdminTickets = document.getElementById("admin-active-tickets-list");
     const containerProposedPicks = document.getElementById("proposed-picks-container");
@@ -58,6 +63,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const setupTabs = () => {
         const tabs = [
             { btn: tabVisualBtn, panel: panelVisual },
+            { btn: tabParleysBtn, panel: panelParleys },
             { btn: tabPredictionsBtn, panel: panelPredictions },
             { btn: tabAdminBtn, panel: panelAdmin }
         ];
@@ -369,6 +375,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         renderSettledTickets();
         renderAdminTickets();
         renderPredictionsTable();
+        renderParleysHistory();
         renderChart();
     };
 
@@ -694,6 +701,126 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     };
 
+    const setupParleyFilters = () => {
+        const filterBtns = document.querySelectorAll(".filter-parley-btn");
+        filterBtns.forEach(btn => {
+            btn.addEventListener("click", () => {
+                filterBtns.forEach(b => b.classList.remove("active"));
+                btn.classList.add("active");
+                parleyFilter = btn.getAttribute("data-filter");
+                renderParleysHistory();
+            });
+        });
+    };
+
+    const renderParleysHistory = () => {
+        if (!dataBanca) return;
+        const activas = dataBanca.apuestas_activas || [];
+        const archivadas = dataBanca.apuestas_archivadas || [];
+        
+        let todos = [...activas, ...archivadas];
+        todos.sort((a, b) => b.ticket_id.localeCompare(a.ticket_id));
+        
+        if (parleyFilter !== "all") {
+            todos = todos.filter(t => t.estado === parleyFilter);
+        }
+        
+        containerParleysHistory.innerHTML = "";
+        
+        if (todos.length === 0) {
+            containerParleysHistory.innerHTML = `<p class="loading-text">💡 No se encontraron parleys con el estado seleccionado.</p>`;
+            return;
+        }
+        
+        todos.forEach(tkt => {
+            const isSegura = tkt.tipo_parley.toLowerCase().includes("segura");
+            const isGanada = tkt.estado === "Ganada";
+            const isPerdida = tkt.estado === "Perdida";
+            const isAnulada = tkt.estado === "Anulada";
+            
+            let statusBadgeHtml = "";
+            let leftBorderColor = "var(--text-muted)";
+            let profitText = "";
+            let profitClass = "";
+            
+            if (isGanada) {
+                statusBadgeHtml = `<span class="badge-status">✅ Ganada</span>`;
+                leftBorderColor = "var(--accent-green)";
+                const netWin = tkt.retorno_realizado - tkt.inversion;
+                profitText = `Resultado: <b>+${netWin.toFixed(2)} USD (Ganancia)</b>`;
+                profitClass = "color: var(--accent-green);";
+            } else if (isPerdida) {
+                statusBadgeHtml = `<span class="badge-status arriesgada">❌ Perdida</span>`;
+                leftBorderColor = "var(--accent-red)";
+                profitText = `Resultado: <b>-${tkt.inversion.toFixed(2)} USD (Pérdida)</b>`;
+                profitClass = "color: var(--accent-red);";
+            } else if (isAnulada) {
+                statusBadgeHtml = `<span class="badge-status" style="background: rgba(156,163,175,0.2); color: #9ca3af;">🔄 Anulada</span>`;
+                leftBorderColor = "var(--text-muted)";
+                profitText = `Resultado: <b>$0.00 USD (Reembolsado)</b>`;
+                profitClass = "color: var(--text-secondary);";
+            } else {
+                statusBadgeHtml = `<span class="badge-status" style="background: rgba(14,165,233,0.2); color: var(--accent-blue);">⏳ Pendiente</span>`;
+                leftBorderColor = "var(--accent-blue)";
+                profitText = `Retorno Potencial: <b>$${tkt.retorno_potencial.toFixed(2)} USD</b>`;
+                profitClass = "color: var(--accent-blue);";
+            }
+            
+            let html = `
+                <div class="ticket-card" style="border-left: 3px solid ${leftBorderColor}; margin-bottom: 15px;">
+                    <div class="ticket-header">
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <h3 style="font-family: 'Outfit', sans-serif; font-size: 1.1rem; font-weight: 700;">🎫 Ticket ${tkt.ticket_id}</h3>
+                            <span style="font-size: 0.75rem; color: var(--text-secondary);">${tkt.tipo_parley} | Jornada: ${tkt.fecha_jornada}</span>
+                        </div>
+                        ${statusBadgeHtml}
+                    </div>
+                    <div class="selections-list">
+            `;
+            
+            tkt.selecciones.forEach(sel => {
+                const cuotaDec = parseFloat(sel.cuota);
+                const selEstado = sel.estado_seleccion || "Pendiente";
+                
+                let selBadge = "";
+                if (selEstado === "Ganado") {
+                    selBadge = `<span style="color: var(--accent-green); font-weight: bold;">✅ Ganado</span>`;
+                } else if (selEstado === "Perdido") {
+                    selBadge = `<span style="color: var(--accent-red); font-weight: bold;">❌ Perdido</span>`;
+                } else if (selEstado === "Anulado") {
+                    selBadge = `<span style="color: #9ca3af; font-weight: bold;">🔄 Anulado</span>`;
+                } else {
+                    selBadge = `<span style="color: var(--accent-blue); font-weight: bold;">⏳ Pendiente</span>`;
+                }
+                
+                const scoreStr = sel.resultado_partido ? `<span style="background: rgba(139,92,246,0.15); color: var(--accent-purple); padding: 2px 6px; border-radius: 4px; font-weight: bold; margin-left: 8px; font-size: 0.8rem;">${sel.resultado_partido}</span>` : "";
+                
+                html += `
+                    <div class="sel-item" style="border-bottom: 1px solid rgba(255,255,255,0.02); padding-bottom: 8px; margin-bottom: 8px;">
+                        <div style="display: flex; flex-direction: column; gap: 2px;">
+                            <span class="sel-match" style="font-weight: 600; color: var(--text-primary);">${sel.partido}${scoreStr}</span>
+                            <span class="sel-pick" style="font-size: 0.8rem; color: var(--text-secondary);">${sel.pronostico} (<b>x${cuotaDec.toFixed(2)} / ${decimalToAmerican(cuotaDec)}</b>)</span>
+                        </div>
+                        <div style="align-self: center; font-size: 0.85rem;">
+                            ${selBadge}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += `
+                    </div>
+                    <div class="ticket-footer" style="background: rgba(255,255,255,0.01); border-top: 1px dashed rgba(255,255,255,0.05); padding-top: 12px; margin-top: 12px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                        <span class="ticket-meta">Inversión: <b>$${tkt.inversion.toFixed(2)} USD</b> | Cuota Combinada: <b>x${tkt.cuota.toFixed(2)} (${decimalToAmerican(tkt.cuota)})</b></span>
+                        <span class="ticket-odds" style="${profitClass}">${profitText}</span>
+                    </div>
+                </div>
+            `;
+            
+            containerParleysHistory.innerHTML += html;
+        });
+    };
+
     const liquidarTicket = async (ticketId, estado) => {
         try {
             const res = await fetch("/api/liquidar", {
@@ -891,6 +1018,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // --- INICIALIZACIÓN ---
     setupTabs();
+    setupParleyFilters();
     setupForm();
     setupInteractiveElements();
     await cargarYRenderizar();

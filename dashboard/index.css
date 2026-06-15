@@ -522,6 +522,13 @@ body {
     background: rgba(255, 255, 255, 0.08);
 }
 
+.btn-secondary.active {
+    background: rgba(139, 92, 246, 0.2);
+    border-color: rgba(139, 92, 246, 0.4);
+    color: #fff;
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.15);
+}
+
 .btn-danger-icon {
     background: rgba(239, 68, 68, 0.1);
     color: var(--accent-red);

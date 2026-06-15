@@ -68,6 +68,7 @@
         <!-- TABS NAVIGATION -->
         <div class="tabs-navigation">
             <button id="tab-btn-visual" class="tab-button active">📈 Panel Visual</button>
+            <button id="tab-btn-parleys" class="tab-button">🎟️ Historial de Parleys</button>
             <button id="tab-btn-predictions" class="tab-button">🤖 Predicciones IA</button>
             <button id="tab-btn-admin" class="tab-button">⚙️ Consola Admin</button>
         </div>
@@ -133,6 +134,30 @@
                     <h2>🎫 Tickets Asentados y Resultados</h2>
                     <div id="settled-tickets-container" class="settled-list">
                         <p class="loading-text">Cargando historial de apuestas...</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- MAIN CONTENT AREA (PARLEYS HISTORICAL PANEL) -->
+        <main id="parleys-panel" class="dashboard-main" style="display: none;">
+            <div class="main-column" style="grid-column: 1 / -1;">
+                <div class="panel-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-left: 3px solid var(--accent-purple); padding-left: 10px; flex-wrap: wrap; gap: 15px;">
+                        <h2 style="border-left: none; padding-left: 0; margin-bottom: 0;">🎟️ Historial de Todos los Parleys Jugados</h2>
+                        <div class="filters-container" style="display: flex; gap: 8px;">
+                            <button class="btn-secondary filter-parley-btn active" data-filter="all">Todos</button>
+                            <button class="btn-secondary filter-parley-btn" data-filter="Pendiente">Pendientes</button>
+                            <button class="btn-secondary filter-parley-btn" data-filter="Ganada">Ganados</button>
+                            <button class="btn-secondary filter-parley-btn" data-filter="Perdida">Perdidos</button>
+                            <button class="btn-secondary filter-parley-btn" data-filter="Anulada">Anulados</button>
+                        </div>
+                    </div>
+                    <p style="color: var(--text-secondary); margin-bottom: 25px; font-size: 0.9rem;">
+                        Aquí puedes ver el desglose completo de todas las combinadas (parleys) jugadas, su inversión, su estado y el resultado de cada una de sus selecciones en tiempo real.
+                    </p>
+                    <div id="parleys-history-container" class="picks-grid">
+                        <p class="loading-text">Cargando historial de parleys...</p>
                     </div>
                 </div>
             </div>
