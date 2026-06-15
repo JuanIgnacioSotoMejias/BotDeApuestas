@@ -161,14 +161,47 @@ class PicksGeneratorService:
             datos_texto = ""
             for idx, datos_dict in enumerate(datos_partidos):
                 datos_texto += f"\n--- PARTIDO #{idx+1} ---\n"
-                if datos_dict.get("encontrado_en_api"):
+                if datos_dict.get("encontrado_en_api") or datos_dict.get("api_football_encontrado"):
+                    local = datos_dict.get("equipo_local", "N/A")
+                    visitante = datos_dict.get("equipo_visitante", "N/A")
+                    datos_texto += f"Partido: {local} vs. {visitante}\n"
+                    
+                    if datos_dict.get("fase"):
+                        datos_texto += f"Fase: {datos_dict.get('fase')}\n"
+                    
+                    estadio = datos_dict.get("estadio_detallado") or datos_dict.get("estadio")
+                    if estadio:
+                        datos_texto += f"Estadio/Sede: {estadio}\n"
+                    if datos_dict.get("arbitro"):
+                        datos_texto += f"Árbitro: {datos_dict.get('arbitro')}\n"
+                    
                     goles = datos_dict.get("goles_torneo", {})
-                    goles_str = ", ".join([f"{t}: {g} goles" for t, g in goles.items()])
-                    datos_texto += (
-                        f"Partido: {datos_dict.get('partido')}\n"
-                        f"Fase: {datos_dict.get('fase')} | Estadio: {datos_dict.get('estadio')}\n"
-                        f"Estadísticas Goles Torneo: {goles_str}\n"
-                    )
+                    if goles:
+                        goles_str = ", ".join([f"{t}: {g} goles" for t, g in goles.items()])
+                        datos_texto += f"Estadísticas Goles Torneo: {goles_str}\n"
+                        
+                    # Detalle H2H Histórico
+                    h2h = datos_dict.get("h2h_historico")
+                    if h2h:
+                        datos_texto += "Historial Directo Reciente (H2H):\n"
+                        for match_h2h in h2h:
+                            datos_texto += f"  - {match_h2h}\n"
+                            
+                    # Alineaciones Oficiales
+                    lineups = datos_dict.get("alineaciones_oficiales")
+                    if lineups:
+                        datos_texto += "Alineaciones y Esquemas Tácticos:\n"
+                        for team_ln in lineups:
+                            titulares_str = ", ".join(team_ln.get("titulares", []))
+                            datos_texto += f"  - {team_ln.get('equipo')} ({team_ln.get('formacion')}) | Entrenador: {team_ln.get('entrenador')}\n"
+                            datos_texto += f"    Titulares: {titulares_str}\n"
+                            
+                    # Reporte de Bajas y Lesionados
+                    bajas = datos_dict.get("bajas_lesiones")
+                    if bajas:
+                        datos_texto += "Reporte de Lesiones / Suspensiones (Bajas Oficiales):\n"
+                        for b in bajas:
+                            datos_texto += f"  - {b.get('jugador')} ({b.get('equipo')}) - Motivo: {b.get('razon')} [{b.get('tipo')}]\n"
                 else:
                     datos_texto += f"Partido: {datos_dict.get('partido_solicitado')}\nNota: {datos_dict.get('nota')}\n"
 
