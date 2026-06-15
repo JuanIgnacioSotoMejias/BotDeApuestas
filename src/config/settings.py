@@ -52,6 +52,8 @@ class Settings:
                         elif key.strip() == "SPORTS_API_URL":
                             cls.SPORTS_API_URL = val
                         elif key.strip() == "DATABASE_URL":
+                            if val.startswith("postgresql://"):
+                                val = val.replace("postgresql://", "postgresql+asyncpg://", 1)
                             cls.DATABASE_URL = val
                             
         # Permitir cargar desde variables de entorno del sistema operativo si .env está ausente
@@ -81,7 +83,10 @@ class Settings:
         if not os.getenv("SPORTS_API_URL") is None:
             cls.SPORTS_API_URL = os.getenv("SPORTS_API_URL")
         if not os.getenv("DATABASE_URL") is None:
-            cls.DATABASE_URL = os.getenv("DATABASE_URL")
+            db_url = os.getenv("DATABASE_URL")
+            if db_url.startswith("postgresql://"):
+                db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            cls.DATABASE_URL = db_url
             
         # Fallback de seguridad si no hay admins definidos
         if not cls.TELEGRAM_ADMIN_IDS and cls.TELEGRAM_CHAT_ID:

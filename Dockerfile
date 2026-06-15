@@ -10,11 +10,8 @@ COPY . .
 # Instalar dependencias
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Hacer ejecutable el script de inicio
-RUN chmod +x start.sh
-
 # Exponer el puerto del servidor HTTP
 EXPOSE 8000
 
-# Comando por defecto para correr el servidor web y el bot en paralelo
-CMD ["sh", "start.sh"]
+# Comando por defecto para correr el supervisor de procesos
+CMD ["python", "launcher.py"]
