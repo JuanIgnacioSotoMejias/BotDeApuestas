@@ -35,5 +35,12 @@ async def get_db():
 
 async def init_db():
     """Inicializa la base de datos creando las tablas si no existen."""
+    from sqlalchemy import text
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        if conn.dialect.name == "postgresql":
+            try:
+                await conn.execute(text("ALTER TABLE tickets ALTER COLUMN tipo_ticket TYPE VARCHAR(100);"))
+                print("✅ [Migration] Columna tickets.tipo_ticket alterada a VARCHAR(100) con éxito.")
+            except Exception as e:
+                print(f"⚠️ [Migration] Error al alterar la columna tickets.tipo_ticket: {e}")

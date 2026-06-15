@@ -39,7 +39,7 @@ class Ticket(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     ticket_id: Mapped[str] = mapped_column(String(50), unique=True) # E.g. 'TKT-20260615-01'
     usuario_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("usuarios.id", ondelete="CASCADE"))
-    tipo_ticket: Mapped[str] = mapped_column(String(20)) # Simple, Combinada
+    tipo_ticket: Mapped[str] = mapped_column(String(100)) # Simple, Combinada
     cuota_total: Mapped[Decimal] = mapped_column(Numeric(8, 2))
     monto_apostado: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     retorno_potencial: Mapped[Decimal] = mapped_column(Numeric(12, 2))
