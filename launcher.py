@@ -3,11 +3,29 @@ import subprocess
 import sys
 import time
 
+import os
+
+# Agregar raíz al PYTHONPATH
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if BASE_DIR not in sys.path:
+    sys.path.append(BASE_DIR)
+
+from src.database.session import init_db
+from src.services.gestor_banca_service import run_async
+
+print("🗄️ [Supervisor] Inicializando base de datos relacional...")
+try:
+    run_async(init_db())
+    print("✅ [Supervisor] Base de datos inicializada con éxito.")
+except Exception as e:
+    print(f"⚠️ [Supervisor] Error al inicializar base de datos: {e}")
+
 print("📡 [Supervisor] Iniciando Servidor Web del Dashboard (Puerto 8000)...")
 web_process = subprocess.Popen([sys.executable, "src/services/web_server.py"])
 
 print("🤖 [Supervisor] Iniciando Bot de Telegram en modo Polling...")
 bot_process = subprocess.Popen([sys.executable, "src/bot.py"])
+
 
 try:
     while True:
