@@ -7,12 +7,16 @@ connect_args = {}
 if Settings.DATABASE_URL.startswith("sqlite"):
     connect_args["check_same_thread"] = False
 
+from sqlalchemy.pool import NullPool
+
 # Crear el motor de base de datos asíncrono
 async_engine = create_async_engine(
     Settings.DATABASE_URL,
     connect_args=connect_args,
+    poolclass=NullPool,
     echo=False
 )
+
 
 # Fábrica de sesiones asíncronas
 async_session_maker = async_sessionmaker(
