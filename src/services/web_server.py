@@ -193,6 +193,37 @@ class DashboardAPIHandler(BaseHTTPRequestHandler):
                 self.send_error(400, "Inversión y Cuota deben ser números válidos.")
                 return
 
+            # Validar que ningún partido de la combinada haya finalizado en la BD de predicciones
+            try:
+                from sqlalchemy import select
+                from src.database.models import PrediccionIA
+                from src.services.gestor_banca_service import run_async
+                from src.database.session import async_session_maker
+
+                async def validar_partidos():
+                    async with async_session_maker() as session:
+                        partidos_names = [sel["partido"] for sel in selecciones]
+                        stmt = select(PrediccionIA).where(
+                            PrediccionIA.partido.in_(partidos_names),
+                            PrediccionIA.estado != "Pendiente"
+                        )
+                        res = await session.execute(stmt)
+                        return res.scalars().all()
+
+                finalizados = run_async(validar_partidos())
+                if finalizados:
+                    partidos_finalizados_nombres = ", ".join([p.partido for p in finalizados])
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "ok": False,
+                        "error": f"No se puede jugar el parley. Los siguientes partidos ya finalizaron: {partidos_finalizados_nombres}"
+                    }).encode("utf-8"))
+                    return
+            except Exception as e:
+                print(f"⚠️ Error al validar partidos finalizados en /api/jugar_ticket: {e}")
+
             banca_srv = GestorBancaService()
             datos = banca_srv.cargar_historial()
             if not datos:

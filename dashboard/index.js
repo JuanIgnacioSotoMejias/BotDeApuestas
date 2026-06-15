@@ -396,6 +396,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const renderProposedPicks = () => {
         if (!dataBanca) return;
         const propuestas = dataBanca.propuestas_hoy;
+        const predicciones = dataBanca.predicciones_ia || [];
 
         containerProposedPicks.innerHTML = "";
 
@@ -405,6 +406,21 @@ document.addEventListener("DOMContentLoaded", async () => {
             Object.keys(propuestas.parleys).forEach(key => {
                 const parley = propuestas.parleys[key];
                 if (!parley || !parley.selecciones || parley.selecciones.length === 0) return;
+
+                // Verificar si alguno de los partidos en el parley ya terminó
+                let algunPartidoTerminado = false;
+                parley.selecciones.forEach(sel => {
+                    const matchingPred = predicciones.find(p => p.partido === sel.partido);
+                    if (matchingPred && matchingPred.estado !== "Pendiente") {
+                        algunPartidoTerminado = true;
+                    }
+                });
+
+                if (algunPartidoTerminado) {
+                    console.log(`🚫 Omitiendo combinada "${parley.nombre}" porque contiene partidos ya finalizados.`);
+                    return; // Saltar renderizado
+                }
+
                 parleysFound = true;
 
                 const isSegura = parley.nombre.toLowerCase().includes("segura");
