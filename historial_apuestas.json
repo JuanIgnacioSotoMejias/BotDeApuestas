@@ -1,0 +1,71 @@
+{
+  "banca": {
+    "moneda": "USD",
+    "banca_inicial": 10.0,
+    "banca_actual": -4.0,
+    "dinero_en_juego": 14.0
+  },
+  "estadisticas_globales": {
+    "total_apuestas_realizadas": 2,
+    "apuestas_ganadas": 0,
+    "apuestas_perdidas": 0,
+    "apuestas_anuladas": 0,
+    "rendimiento_yield": "0.0%",
+    "roi": "0.0%"
+  },
+  "apuestas_activas": [
+    {
+      "ticket_id": "TKT-20260615-01",
+      "fecha_registro": "2026-06-15T10:53:38.242878",
+      "fecha_jornada": "2026-06-15",
+      "tipo_parley": "Combinada Segura",
+      "cuota": 1.62,
+      "inversion": 1.0,
+      "retorno_potencial": 1.62,
+      "estado": "Pendiente",
+      "selecciones": [
+        {
+          "partido": "España vs. Cabo Verde",
+          "pronostico": "España DNB (Inversión sin Empate)",
+          "cuota": 1.35,
+          "estado_seleccion": "Pendiente",
+          "resultado_partido": null
+        },
+        {
+          "partido": "Bélgica vs. Egipto",
+          "pronostico": "Bélgica o Empate (Doble Oportunidad)",
+          "cuota": 1.2,
+          "estado_seleccion": "Pendiente",
+          "resultado_partido": null
+        }
+      ]
+    },
+    {
+      "ticket_id": "TKT-20260615-02",
+      "fecha_registro": "2026-06-15T10:53:38.242899",
+      "fecha_jornada": "2026-06-15",
+      "tipo_parley": "Combinada de Alto Valor",
+      "cuota": 2.7,
+      "inversion": 1.0,
+      "retorno_potencial": 2.7,
+      "estado": "Pendiente",
+      "selecciones": [
+        {
+          "partido": "Arabia Saudita vs. Uruguay",
+          "pronostico": "Uruguay Ganar",
+          "cuota": 1.5,
+          "estado_seleccion": "Pendiente",
+          "resultado_partido": null
+        },
+        {
+          "partido": "Irán vs. Nueva Zelanda",
+          "pronostico": "Irán Ganar",
+          "cuota": 1.8,
+          "estado_seleccion": "Pendiente",
+          "resultado_partido": null
+        }
+      ]
+    }
+  ],
+  "apuestas_archivadas": []
+}

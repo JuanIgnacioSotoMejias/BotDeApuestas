@@ -1,0 +1,11 @@
+# Ignorar variables de entorno privadas
+.env
+
+# Ignorar archivos temporales y cache de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+.vscode/
+.idea/

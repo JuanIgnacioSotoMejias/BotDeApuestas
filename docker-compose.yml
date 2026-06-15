@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  dashboard:
+    build: .
+    container_name: apuestas_dashboard
+    command: python src/services/web_server.py
+    ports:
+      - "0.0.0.0:8000:8000"
+    volumes:
+      - .:/app
+    restart: always
+
+  bot:
+    build: .
+    container_name: apuestas_bot
+    command: python src/bot.py
+    volumes:
+      - .:/app
+    restart: always

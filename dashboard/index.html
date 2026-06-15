@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🏆 Reto de Banca Mundial 2026 - $10 to $100</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <div class="background-glow"></div>
+    
+    <div class="dashboard-container">
+        <!-- HEADER -->
+        <header class="dashboard-header">
+            <div class="logo-area">
+                <span class="logo-emoji">🏆</span>
+                <div>
+                    <h1>Reto de Banca Mundial 2026</h1>
+                    <p class="subtitle">Analista Deportivo & Científico de Datos Avanzado</p>
+                </div>
+            </div>
+            <div class="target-badge">
+                <span class="badge-label">Objetivo</span>
+                <span class="badge-value">$10 ➔ $100 USD</span>
+            </div>
+        </header>
+
+        <!-- STATS GRID -->
+        <section class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">💵</div>
+                <div class="stat-info">
+                    <span class="stat-label">Banca Inicial</span>
+                    <span class="stat-value" id="banca-inicial">$10.00</span>
+                </div>
+            </div>
+            <div class="stat-card accent-green">
+                <div class="stat-icon">💰</div>
+                <div class="stat-info">
+                    <span class="stat-label">Banca Disponible</span>
+                    <span class="stat-value" id="banca-disponible">$8.00</span>
+                </div>
+            </div>
+            <div class="stat-card accent-blue">
+                <div class="stat-icon">🔥</div>
+                <div class="stat-info">
+                    <span class="stat-label">Dinero en Juego</span>
+                    <span class="stat-value" id="dinero-juego">$2.00</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">📈</div>
+                <div class="stat-info">
+                    <span class="stat-label">Yield Acumulado</span>
+                    <span class="stat-value" id="yield-stats">0.0%</span>
+                </div>
+            </div>
+            <div class="stat-card highlight">
+                <div class="stat-icon">🎯</div>
+                <div class="stat-info">
+                    <span class="stat-label">ROI Actual</span>
+                    <span class="stat-value" id="roi-stats">0.0%</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- TABS NAVIGATION -->
+        <div class="tabs-navigation">
+            <button id="tab-btn-visual" class="tab-button active">📈 Panel Visual</button>
+            <button id="tab-btn-admin" class="tab-button">⚙️ Consola Admin</button>
+        </div>
+
+        <!-- MAIN CONTENT AREA (VISUAL PANEL) -->
+        <main id="visual-panel" class="dashboard-main">
+            <!-- LEFT COLUMN: CHART & ACTIVE PICKS -->
+            <div class="main-column">
+                <!-- CHART CARD -->
+                <div class="panel-card chart-panel">
+                    <h2>📈 Curva de Crecimiento de Banca</h2>
+                    <div class="chart-wrapper">
+                        <canvas id="growthChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- ACTIVE PICKS PANEL -->
+                <div class="panel-card">
+                    <h2>🟢 Combinadas Activas de la Jornada</h2>
+                    <div id="active-picks-container" class="picks-grid">
+                        <p class="loading-text">Cargando jugadas activas...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN: HISTORICAL LIST & STATS -->
+            <div class="main-column side-column">
+                <div class="panel-card settled-panel">
+                    <h2>🎫 Tickets Asentados y Resultados</h2>
+                    <div id="settled-tickets-container" class="settled-list">
+                        <p class="loading-text">Cargando historial de apuestas...</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- MAIN CONTENT AREA (ADMIN PANEL) -->
+        <main id="admin-panel" class="dashboard-main" style="display: none;">
+            <!-- LEFT COLUMN: CREAR PICKS FORM -->
+            <div class="main-column">
+                <div class="panel-card form-panel">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-left: 3px solid var(--accent-blue); padding-left: 10px;">
+                        <h2 style="border-left: none; padding-left: 0; margin-bottom: 0; font-size: 1.25rem; font-weight: 600; font-family: 'Outfit', sans-serif;">✍️ Registrar Combinadas</h2>
+                        <button type="button" id="btn-generar-ia" class="btn-primary" style="background: linear-gradient(135deg, var(--accent-purple) 0%, #6d28d9 100%); box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3); padding: 8px 16px; font-size: 0.85rem;">🤖 Generar con IA</button>
+                    </div>
+                    <form id="crear-picks-form">
+                        <div class="form-row-inline">
+                            <div class="form-group">
+                                <label for="form-fecha">Fecha de la Jornada</label>
+                                <input type="date" id="form-fecha" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="form-desc">Descripción de la Jornada</label>
+                                <input type="text" id="form-desc" placeholder="Ej: Mundial Jornada 4 o Picks del Lunes" required>
+                            </div>
+                        </div>
+
+                        <!-- SECCIÓN COMBINADA SEGURA -->
+                        <div class="form-section">
+                            <div class="section-header">
+                                <h3>🟢 Combinada Segura</h3>
+                                <span class="badge-status">Bajo Riesgo</span>
+                            </div>
+                            <div id="seguro-selections-container" class="form-selections-list">
+                                <!-- Se agregarán dinámicamente aquí -->
+                            </div>
+                            <button type="button" class="btn-secondary add-selection-btn" data-type="seguro">+ Añadir Selección</button>
+                        </div>
+
+                        <!-- SECCIÓN COMBINADA ARRIESGADA -->
+                        <div class="form-section">
+                            <div class="section-header">
+                                <h3>🔴 Combinada de Alto Valor</h3>
+                                <span class="badge-status arriesgada">Alto Riesgo</span>
+                            </div>
+                            <div id="arriesgado-selections-container" class="form-selections-list">
+                                <!-- Se agregarán dinámicamente aquí -->
+                            </div>
+                            <button type="button" class="btn-secondary add-selection-btn" data-type="arriesgado">+ Añadir Selección</button>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary submit-picks-btn">🚀 Registrar y Publicar Picks</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN: LIQUIDACIÓN RÁPIDA -->
+            <div class="main-column side-column">
+                <div class="panel-card admin-settled-panel">
+                    <h2>⚙️ Liquidar Apuestas Activas</h2>
+                    <div id="admin-active-tickets-list" class="admin-tickets-list">
+                        <p class="loading-text">Cargando tickets activos...</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="index.js"></script>
+</body>
+</html>
