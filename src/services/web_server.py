@@ -58,9 +58,12 @@ class DashboardAPIHandler(BaseHTTPRequestHandler):
         # Limpiar query parameters del path
         clean_path = self.path.split("?", 1)[0]
         
-        # Redirigir por defecto al index.html del dashboard
+        # Redirigir por defecto al index.html del dashboard con redirección real
         if clean_path in ["/", "/dashboard", "/dashboard/"]:
-            clean_path = "/dashboard/index.html"
+            self.send_response(302)
+            self.send_header("Location", "/dashboard/index.html")
+            self.end_headers()
+            return
 
         # Servir recursos estáticos de /dashboard/
         if clean_path.startswith("/dashboard/"):
