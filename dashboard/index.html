@@ -68,12 +68,13 @@
         <!-- TABS NAVIGATION -->
         <div class="tabs-navigation">
             <button id="tab-btn-visual" class="tab-button active">📈 Panel Visual</button>
+            <button id="tab-btn-predictions" class="tab-button">🤖 Predicciones IA</button>
             <button id="tab-btn-admin" class="tab-button">⚙️ Consola Admin</button>
         </div>
 
         <!-- MAIN CONTENT AREA (VISUAL PANEL) -->
         <main id="visual-panel" class="dashboard-main">
-            <!-- LEFT COLUMN: CHART & ACTIVE PICKS -->
+            <!-- LEFT COLUMN: CHART, PROPOSALS & ACTIVE PICKS -->
             <div class="main-column">
                 <!-- CHART CARD -->
                 <div class="panel-card chart-panel">
@@ -83,21 +84,90 @@
                     </div>
                 </div>
 
+                <!-- PROPOSED PICKS PANEL -->
+                <div class="panel-card" id="proposed-picks-card">
+                    <h2>🤖 Combinadas Sugeridas por la IA (Pendientes de Jugar)</h2>
+                    <div id="proposed-picks-container" class="picks-grid">
+                        <p class="loading-text">Cargando propuestas de hoy...</p>
+                    </div>
+                </div>
+
                 <!-- ACTIVE PICKS PANEL -->
                 <div class="panel-card">
-                    <h2>🟢 Combinadas Activas de la Jornada</h2>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-left: 3px solid var(--accent-green); padding-left: 10px;">
+                        <h2 style="border-left: none; padding-left: 0; margin-bottom: 0;">🟢 Combinadas Activas de la Jornada</h2>
+                        <button id="btn-actualizar-resultados" class="btn-primary" style="background: linear-gradient(135deg, var(--accent-blue) 0%, #1d4ed8 100%); padding: 8px 16px; font-size: 0.85rem; box-shadow: 0 4px 15px rgba(14, 165, 233, 0.25);">🔄 Actualizar Marcadores</button>
+                    </div>
                     <div id="active-picks-container" class="picks-grid">
                         <p class="loading-text">Cargando jugadas activas...</p>
                     </div>
                 </div>
             </div>
 
-            <!-- RIGHT COLUMN: HISTORICAL LIST & STATS -->
+            <!-- RIGHT COLUMN: BANK ADJUSTMENT & HISTORICAL LIST -->
             <div class="main-column side-column">
+                <!-- BANK ADJUSTMENT PANEL -->
+                <div class="panel-card bank-adjust-card">
+                    <h2>💵 Ajuste Manual de Banca</h2>
+                    <form id="ajuste-banca-form">
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label for="ajuste-tipo">Acción</label>
+                            <select id="ajuste-tipo" style="width: 100%;" required>
+                                <option value="Deposito">🟢 Depositar Fondos</option>
+                                <option value="Retiro">🔴 Retirar Fondos</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label for="ajuste-monto">Monto ($ USD)</label>
+                            <input type="number" id="ajuste-monto" step="0.01" min="0.01" placeholder="Ej: 50.00" style="width: 100%;" required>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label for="ajuste-desc">Descripción / Motivo</label>
+                            <input type="text" id="ajuste-desc" placeholder="Ej: Carga de banca de prueba" style="width: 100%;">
+                        </div>
+                        <button type="submit" class="btn-primary" style="width: 100%; margin-top: 10px;">Aplicar Ajuste</button>
+                    </form>
+                </div>
+
                 <div class="panel-card settled-panel">
                     <h2>🎫 Tickets Asentados y Resultados</h2>
                     <div id="settled-tickets-container" class="settled-list">
                         <p class="loading-text">Cargando historial de apuestas...</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- MAIN CONTENT AREA (PREDICTIONS IA PANEL) -->
+        <main id="predictions-panel" class="dashboard-main" style="display: none;">
+            <div class="main-column" style="grid-column: 1 / -1;">
+                <div class="panel-card">
+                    <h2>🤖 Historial de Predicciones de la Inteligencia Artificial</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;">
+                        Registro histórico completo de todos los pronósticos y parleys propuestos por la IA. Estos datos se utilizan para el entrenamiento continuo de los agentes.
+                    </p>
+                    <div class="table-responsive" style="overflow-x: auto;">
+                        <table class="predictions-table" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem;">
+                            <thead>
+                                <tr style="border-bottom: 2px solid var(--card-border); color: var(--text-secondary);">
+                                    <th style="padding: 12px 10px;">Fecha</th>
+                                    <th style="padding: 12px 10px;">Partido</th>
+                                    <th style="padding: 12px 10px;">Pronóstico</th>
+                                    <th style="padding: 12px 10px;">Cuota</th>
+                                    <th style="padding: 12px 10px;">Prob. Estad.</th>
+                                    <th style="padding: 12px 10px;">Prob. Impl.</th>
+                                    <th style="padding: 12px 10px;">Valor</th>
+                                    <th style="padding: 12px 10px;">Tipo Parley</th>
+                                    <th style="padding: 12px 10px;">Estado</th>
+                                    <th style="padding: 12px 10px;">Marcador</th>
+                                </tr>
+                            </thead>
+                            <tbody id="predictions-tbody">
+                                <tr>
+                                    <td colspan="10" class="loading-text" style="text-align: center; padding: 20px;">Cargando predicciones...</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>

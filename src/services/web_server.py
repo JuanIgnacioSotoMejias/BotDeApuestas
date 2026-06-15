@@ -48,6 +48,17 @@ class DashboardAPIHandler(BaseHTTPRequestHandler):
                 banca_srv = GestorBancaService()
                 datos = banca_srv.cargar_historial()
                 if datos:
+                    # Inyectar propuestas de hoy leídas desde el JSON
+                    propuestas_hoy = None
+                    jugadas_path = os.path.join(BASE_DIR, "jugadas_lunes_15.json")
+                    if os.path.exists(jugadas_path):
+                        try:
+                            with open(jugadas_path, "r", encoding="utf-8") as f:
+                                propuestas_hoy = json.load(f)
+                        except Exception as e:
+                            print(f"⚠️ Error al leer {jugadas_path}: {e}")
+                    datos["propuestas_hoy"] = propuestas_hoy
+
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
                     self.end_headers()
@@ -132,6 +143,144 @@ class DashboardAPIHandler(BaseHTTPRequestHandler):
             body = json.loads(post_data) if post_data.strip() else {}
         except Exception:
             self.send_error(400, "Cuerpo de petición no es un JSON válido.")
+            return
+
+        # API POST: Colocación de apuesta interactiva
+        if self.path == "/api/jugar_ticket":
+            tipo_parley = body.get("tipo_parley")
+            inversion = body.get("inversion")
+            cuota = body.get("cuota")
+            selecciones = body.get("selecciones")
+            
+            if not tipo_parley or not inversion or not cuota or not selecciones:
+                self.send_error(400, "Faltan campos obligatorios (tipo_parley, inversion, cuota, selecciones).")
+                return
+                
+            try:
+                inversion_val = float(inversion)
+                cuota_val = float(cuota)
+            except ValueError:
+                self.send_error(400, "Inversión y Cuota deben ser números válidos.")
+                return
+
+            banca_srv = GestorBancaService()
+            datos = banca_srv.cargar_historial()
+            if not datos:
+                self.send_error(500, "Error al cargar la base de datos de apuestas.")
+                return
+                
+            banca_actual = datos["banca"]["banca_actual"]
+            if banca_actual < inversion_val:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": False, "error": "Saldo insuficiente en banca."}).encode("utf-8"))
+                return
+                
+            tkt_id = f"TKT-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
+            
+            datos["apuestas_activas"].append({
+                "ticket_id": tkt_id,
+                "fecha_registro": datetime.datetime.now().isoformat(),
+                "fecha_jornada": datetime.date.today().strftime("%Y-%m-%d"),
+                "tipo_parley": tipo_parley,
+                "cuota": cuota_val,
+                "inversion": inversion_val,
+                "retorno_potencial": round(inversion_val * cuota_val, 2),
+                "estado": "Pendiente",
+                "selecciones": [{
+                    "partido": sel["partido"],
+                    "pronostico": sel["pronostico"],
+                    "cuota": float(sel["cuota"]),
+                    "estado_seleccion": "Pendiente",
+                    "resultado_partido": None
+                } for sel in selecciones]
+            })
+            
+            datos["banca"]["banca_actual"] = round(banca_actual - inversion_val, 2)
+            datos["banca"]["dinero_en_juego"] = round(datos["banca"].get("dinero_en_juego", 0.0) + inversion_val, 2)
+            
+            banca_srv.guardar_historial(datos)
+            
+            tg = TelegramService()
+            tg.enviar_reporte_banca(datos)
+            tg.enviar_mensaje(f"🟢 *Nueva Apuesta Colocada!* 🟢\n"
+                              f"━━━━━━━━━━━━━━━━━━━━━\n"
+                              f"• *Ticket:* `{tkt_id}`\n"
+                              f"• *Tipo:* `{tipo_parley}`\n"
+                              f"• *Inversión:* `${inversion_val:.2f} USD`\n"
+                              f"• *Cuota Total:* `{cuota_val:.2f}`\n"
+                              f"• *Retorno Potencial:* `${(inversion_val * cuota_val):.2f} USD`\n"
+                              f"━━━━━━━━━━━━━━━━━━━━━")
+            
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": True, "message": f"Apuesta colocada con éxito. Ticket: {tkt_id}", "ticket_id": tkt_id}).encode("utf-8"))
+            return
+
+        # API POST: Ajuste de banca (Depósitos / Retiros)
+        if self.path == "/api/banca/ajustar":
+            tipo = body.get("tipo")
+            monto = body.get("monto")
+            descripcion = body.get("descripcion")
+            
+            if tipo not in ["Deposito", "Retiro"] or not monto:
+                self.send_error(400, "Se requiere 'tipo' (Deposito/Retiro) y 'monto' válido.")
+                return
+                
+            try:
+                monto_val = float(monto)
+                if monto_val <= 0:
+                    raise ValueError()
+            except ValueError:
+                self.send_error(400, "Monto debe ser un número positivo.")
+                return
+                
+            banca_srv = GestorBancaService()
+            try:
+                datos = banca_srv.ajustar_banca(tipo, monto_val, descripcion)
+                
+                tg = TelegramService()
+                tg.enviar_reporte_banca(datos)
+                tg.enviar_mensaje(f"💵 *Ajuste de Banca Realizado* 💵\n"
+                                  f"━━━━━━━━━━━━━━━━━━━━━\n"
+                                  f"• *Tipo:* {tipo}\n"
+                                  f"• *Monto:* ${monto_val:.2f} USD\n"
+                                  f"• *Descripción:* {descripcion or 'N/A'}\n"
+                                  f"• *Nuevo Saldo:* ${datos['banca']['banca_actual']:.2f} USD\n"
+                                  f"━━━━━━━━━━━━━━━━━━━━━")
+                
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": True, "message": f"Ajuste de banca de ${monto_val:.2f} completado con éxito.", "banca": datos["banca"]}).encode("utf-8"))
+            except Exception as e:
+                self.send_error(500, f"Error al procesar el ajuste de banca: {str(e)}")
+            return
+
+        # API POST: Actualización de marcadores y resultados
+        if self.path == "/api/actualizar_resultados":
+            banca_srv = GestorBancaService()
+            try:
+                resumen = banca_srv.actualizar_resultados_deportivos()
+                
+                if resumen.get("apuestas_liquidadas"):
+                    datos = banca_srv.cargar_historial()
+                    tg = TelegramService()
+                    tg.enviar_reporte_banca(datos)
+                    tg.enviar_mensaje(f"🔄 *Resultados Deportivos Sincronizados* 🔄\n"
+                                      f"━━━━━━━━━━━━━━━━━━━━━\n"
+                                      f"• *Apuestas Liquidadas:* {', '.join(resumen['apuestas_liquidadas'])}\n"
+                                      f"• *Predicciones Liquidadas:* {len(resumen['predicciones_liquidadas'])}\n"
+                                      f"━━━━━━━━━━━━━━━━━━━━━")
+                
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": True, "resumen": resumen}).encode("utf-8"))
+            except Exception as e:
+                self.send_error(500, f"Error al actualizar resultados: {str(e)}")
             return
 
         # API POST: Liquidación rápida de apuestas activas

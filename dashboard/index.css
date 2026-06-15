@@ -656,3 +656,15 @@ body {
         margin-top: 5px;
     }
 }
+
+/* ESTILOS DE TABLA DE PREDICCIONES */
+.predictions-table th, .predictions-table td {
+    padding: 12px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.predictions-table tbody tr {
+    transition: background 0.2s ease;
+}
+.predictions-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.03);
+}

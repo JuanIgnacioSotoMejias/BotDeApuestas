@@ -61,6 +61,10 @@ class ResultadosAPIService:
         Mecanismo de fallback interactivo o de simulación para cuando la API no responde o
         durante pruebas locales antes del torneo.
         """
+        # Evitar bloquear hilos en producción si no es una consola interactiva (TTY)
+        if not sys.stdin or not sys.stdin.isatty():
+            return None, None, False
+            
         print(f"\n🔄 Fallback: API no disponible para el partido '{equipo_local} vs. {equipo_visitante}'.")
         marcador = input(f"📝 Digite marcador real de '{equipo_local} vs. {equipo_visitante}' (Ej: 2-1) [Enter si no ha jugado]: ").strip()
         if not marcador or "-" not in marcador:

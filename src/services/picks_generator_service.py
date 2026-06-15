@@ -135,6 +135,17 @@ class PicksGeneratorService:
                                 marcador = f" (Marcador: {sel.get('resultado_partido')})" if sel.get('resultado_partido') else ""
                                 historial_previo += f"    * {sel.get('partido')} -> Pronóstico: {sel.get('pronostico')} (Cuota: {sel.get('cuota')}) | Resultado: {emoji_sel}{marcador}\n"
                             historial_previo += "\n"
+
+                    predicciones = datos_historial.get("predicciones_ia", [])
+                    predicciones_resueltas = [p for p in predicciones if p.get("estado") != "Pendiente"]
+                    if predicciones_resueltas:
+                        historial_previo += "\n=== HISTORIAL DE PREDICCIONES INDIVIDUALES ANTERIORES Y SUS RESULTADOS ===\n"
+                        historial_previo += "Aquí tienes el resultado de todas las predicciones individuales propuestas por ti anteriormente. Úsalos para mejorar tus selecciones:\n\n"
+                        for idx_p, p in enumerate(predicciones_resueltas):
+                            emoji_p = "✅ Ganado" if p["estado"] == "Ganado" else ("❌ Perdido" if p["estado"] == "Perdido" else "🔄 Anulado")
+                            marcador = f" (Marcador: {p['resultado_partido']})" if p.get("resultado_partido") else ""
+                            historial_previo += f"  * Predicción #{idx_p+1}: {p['partido']} -> Pronóstico: {p['pronostico']} (Cuota: {p['cuota']}) | Tipo: {p['tipo_parley']} | Resultado: {emoji_p}{marcador}\n"
+                        historial_previo += "\n"
             except Exception as e:
                 print(f"⚠️ PicksGeneratorService: No se pudo cargar el historial para retroalimentación: {e}")
 
@@ -276,65 +287,48 @@ class PicksGeneratorService:
             with open(self.jugadas_path, "w", encoding="utf-8") as f:
                 json.dump(datos_picks, f, indent=2, ensure_ascii=False)
                 
-            # 7. Registrar en la base de datos de banca descontando inversión
-            datos_banca = self.banca_srv.cargar_historial()
-            if datos_banca:
-                tkt_seguro_id = f"TKT-{fecha_hoy.replace('-', '')}-01"
-                tkt_arriesgado_id = f"TKT-{fecha_hoy.replace('-', '')}-02"
-                
-                # Quitar previos del día para evitar colisiones
-                datos_banca["apuestas_activas"] = [
-                    tkt for tkt in datos_banca.get("apuestas_activas", [])
-                    if tkt.get("ticket_id") not in [tkt_seguro_id, tkt_arriesgado_id]
-                ]
-                
-                p_seguro = datos_picks["parleys"]["parley_seguro"]
-                p_arriesgado = datos_picks["parleys"]["parley_arriesgado"]
-                
-                # Combinada Segura
-                datos_banca["apuestas_activas"].append({
-                    "ticket_id": tkt_seguro_id,
-                    "fecha_registro": datetime.datetime.now().isoformat(),
-                    "fecha_jornada": fecha_hoy,
-                    "tipo_parley": "Combinada Segura",
-                    "cuota": p_seguro["cuota_total_estimada"],
-                    "inversion": 1.0,
-                    "retorno_potencial": p_seguro["cuota_total_estimada"],
-                    "estado": "Pendiente",
-                    "selecciones": [{
-                        "partido": sel["partido"],
-                        "pronostico": sel["pronostico"],
-                        "cuota": sel["cuota"],
-                        "estado_seleccion": "Pendiente",
-                        "resultado_partido": None
-                    } for sel in p_seguro["selecciones"]]
-                })
-                
-                # Combinada Arriesgada
-                datos_banca["apuestas_activas"].append({
-                    "ticket_id": tkt_arriesgado_id,
-                    "fecha_registro": datetime.datetime.now().isoformat(),
-                    "fecha_jornada": fecha_hoy,
-                    "tipo_parley": "Combinada de Alto Valor",
-                    "cuota": p_arriesgado["cuota_total_estimada"],
-                    "inversion": 1.0,
-                    "retorno_potencial": p_arriesgado["cuota_total_estimada"],
-                    "estado": "Pendiente",
-                    "selecciones": [{
-                        "partido": sel["partido"],
-                        "pronostico": sel["pronostico"],
-                        "cuota": sel["cuota"],
-                        "estado_seleccion": "Pendiente",
-                        "resultado_partido": None
-                    } for sel in p_arriesgado["selecciones"]]
-                })
-                
-                # Descontar saldo de banca ($2.00 en total)
-                banca = datos_banca.get("banca", {})
-                banca["banca_actual"] = round(banca.get("banca_actual", 10.0) - 2.0, 2)
-                banca["dinero_en_juego"] = round(banca.get("dinero_en_juego", 0.0) + 2.0, 2)
-                
-                self.banca_srv.guardar_historial(datos_banca)
+            # 7. Registrar en la base de datos de predicciones de IA
+            async def guardar_predicciones_db():
+                from decimal import Decimal
+                from src.database.models import PrediccionIA
+                async with async_session_maker() as session:
+                    # Combinada Segura
+                    p_seguro = datos_picks["parleys"]["parley_seguro"]
+                    for sel in p_seguro.get("selecciones", []):
+                        pred = PrediccionIA(
+                            partido=sel["partido"],
+                            pronostico=sel["pronostico"],
+                            cuota=Decimal(str(sel["cuota"])),
+                            probabilidad_estadistica=Decimal(str(sel.get("probabilidad_estadistica", "70%").replace("%", "").strip())),
+                            probabilidad_implicita=Decimal(str(sel.get("probabilidad_implicita", "60%").replace("%", "").strip())),
+                            valor=sel.get("valor", "Sí"),
+                            tipo_parley="Combinada Segura",
+                            estado="Pendiente"
+                        )
+                        session.add(pred)
+                        
+                    # Combinada de Alto Valor
+                    p_arriesgado = datos_picks["parleys"]["parley_arriesgado"]
+                    for sel in p_arriesgado.get("selecciones", []):
+                        pred = PrediccionIA(
+                            partido=sel["partido"],
+                            pronostico=sel["pronostico"],
+                            cuota=Decimal(str(sel["cuota"])),
+                            probabilidad_estadistica=Decimal(str(sel.get("probabilidad_estadistica", "60%").replace("%", "").strip())),
+                            probabilidad_implicita=Decimal(str(sel.get("probabilidad_implicita", "50%").replace("%", "").strip())),
+                            valor=sel.get("valor", "Sí"),
+                            tipo_parley="Combinada de Alto Valor",
+                            estado="Pendiente"
+                        )
+                        session.add(pred)
+                    await session.commit()
+
+            try:
+                run_async(guardar_predicciones_db())
+                print("🤖 PicksGeneratorService: Predicciones guardadas en DB.")
+            except Exception as e:
+                print(f"⚠️ PicksGeneratorService: Error al guardar predicciones en DB: {e}")
+
 
             # 8. Publicar en Telegram de inmediato
             self.tg.enviar_reporte_picks(self.jugadas_path)

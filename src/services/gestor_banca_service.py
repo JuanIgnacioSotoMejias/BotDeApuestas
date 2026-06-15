@@ -314,12 +314,35 @@ class GestorBancaService:
             # Recalcular estadísticas
             stats = self.calcular_estadisticas_globales_dict(banca, apuestas_archivadas, len(tickets))
             
+            # Cargar predicciones de IA históricas (tabla predicciones_ia)
+            from src.database.models import PrediccionIA
+            stmt_preds = select(PrediccionIA).order_by(PrediccionIA.fecha.desc()).limit(30)
+            res_preds = await session.execute(stmt_preds)
+            preds = res_preds.scalars().all()
+            predicciones_json = []
+            for p in preds:
+                predicciones_json.append({
+                    "id": p.id,
+                    "fecha": p.fecha.isoformat(),
+                    "partido": p.partido,
+                    "pronostico": p.pronostico,
+                    "cuota": float(p.cuota),
+                    "probabilidad_estadistica": float(p.probabilidad_estadistica),
+                    "probabilidad_implicita": float(p.probabilidad_implicita),
+                    "valor": p.valor,
+                    "tipo_parley": p.tipo_parley,
+                    "estado": p.estado,
+                    "resultado_partido": p.resultado_partido
+                })
+            
             return {
                 "banca": banca,
                 "estadisticas_globales": stats,
                 "apuestas_activas": apuestas_activas,
-                "apuestas_archivadas": apuestas_archivadas
+                "apuestas_archivadas": apuestas_archivadas,
+                "predicciones_ia": predicciones_json
             }
+
 
     def calcular_estadisticas_globales_dict(self, banca, archivadas, total_len):
         inversion_total_settled = 0.0
@@ -524,3 +547,200 @@ class GestorBancaService:
             
         with open(self.log_path, "w", encoding="utf-8") as f:
             f.write(md)
+
+    # --- MÉTODOS DE AJUSTE DE BANCA Y ACTUALIZACIÓN DE RESULTADOS ---
+    async def ajustar_banca_async(self, tipo, monto, descripcion):
+        """Deposita o retira fondos de la banca del usuario en base de datos."""
+        from decimal import Decimal
+        monto_dec = Decimal(str(monto))
+        if tipo == "Retiro":
+            monto_dec = -monto_dec
+            
+        async with async_session_maker() as session:
+            user_id = int(Settings.TELEGRAM_CHAT_ID or 1234567)
+            result = await session.execute(select(Usuario).where(Usuario.id == user_id))
+            usuario = result.scalar_one_or_none()
+            if not usuario:
+                usuario = Usuario(id=user_id, username="admin", saldo=Decimal("10.00"))
+                session.add(usuario)
+                await session.flush()
+                
+            usuario.saldo = round(usuario.saldo + monto_dec, 2)
+            
+            # Guardar transacción
+            trans = Transaccion(
+                usuario_id=user_id,
+                tipo=tipo,
+                monto=monto_dec,
+                descripcion=descripcion or f"Ajuste de banca: {tipo}"
+            )
+            session.add(trans)
+            await session.commit()
+            
+            # Recargar y guardar bitácora
+            datos = await self.cargar_historial_async()
+            self.exportar_bitacora(datos)
+            return datos
+            
+    def ajustar_banca(self, tipo, monto, descripcion):
+        return run_async(self.ajustar_banca_async(tipo, monto, descripcion))
+
+    async def actualizar_resultados_deportivos_async(self):
+        """
+        Consulta la API de resultados deportivos y liquida tanto las apuestas activas
+        como las predicciones de IA pendientes.
+        """
+        from src.services.resultados_api_service import ResultadosAPIService
+        api_srv = ResultadosAPIService()
+        
+        resumen = {
+            "apuestas_liquidadas": [],
+            "predicciones_liquidadas": [],
+            "errores": []
+        }
+        
+        datos = await self.cargar_historial_async()
+        activas = list(datos.get("apuestas_activas", []))
+        
+        # 1. Liquidar apuestas activas
+        for tkt in activas:
+            tkt_id = tkt.get("ticket_id")
+            resultados_tkt = {}
+            error_obtencion = False
+            
+            for sel in tkt.get("selecciones", []):
+                partido = sel.get("partido")
+                if " vs. " in partido:
+                    home, away = partido.split(" vs. ", 1)
+                elif " vs " in partido:
+                    home, away = partido.split(" vs ", 1)
+                else:
+                    home, away = partido, ""
+                    
+                g_home, g_away, finalizado = api_srv.conseguir_marcador(home, away)
+                if finalizado and g_home is not None and g_away is not None:
+                    marcador_str = f"{g_home}-{g_away}"
+                    estado_sel = evaluar_pronostico(sel.get("pronostico"), home, away, g_home, g_away)
+                    resultados_tkt[partido] = {
+                        "estado": estado_sel,
+                        "marcador": marcador_str
+                    }
+                else:
+                    error_obtencion = True
+                    break
+                    
+            if not error_obtencion:
+                exito = self.asentar_ticket(datos, tkt_id, resultados_tkt)
+                if exito:
+                    resumen["apuestas_liquidadas"].append(tkt_id)
+                    
+        # Guardar cambios financieros si hubo liquidación
+        if resumen["apuestas_liquidadas"]:
+            await self.guardar_historial_async(datos)
+            
+        # 2. Liquidar predicciones de IA pendientes
+        from src.database.models import PrediccionIA
+        async with async_session_maker() as session:
+            stmt = select(PrediccionIA).where(PrediccionIA.estado == "Pendiente")
+            res_preds = await session.execute(stmt)
+            pending_preds = res_preds.scalars().all()
+            
+            for pred in pending_preds:
+                partido = pred.partido
+                if " vs. " in partido:
+                    home, away = partido.split(" vs. ", 1)
+                elif " vs " in partido:
+                    home, away = partido.split(" vs ", 1)
+                else:
+                    home, away = partido, ""
+                    
+                g_home, g_away, finalizado = api_srv.conseguir_marcador(home, away)
+                if finalizado and g_home is not None and g_away is not None:
+                    marcador_str = f"{g_home}-{g_away}"
+                    estado_pred = evaluar_pronostico(pred.pronostico, home, away, g_home, g_away)
+                    
+                    pred.estado = "Ganado" if estado_pred == "Ganado" else ("Perdido" if estado_pred == "Perdido" else "Anulado")
+                    pred.resultado_partido = marcador_str
+                    resumen["predicciones_liquidadas"].append(f"{pred.partido} ({pred.pronostico}) -> {pred.estado}")
+            await session.commit()
+            
+        return resumen
+
+    def actualizar_resultados_deportivos(self):
+        return run_async(self.actualizar_resultados_deportivos_async())
+
+
+def evaluar_pronostico(pronostico, home_name, away_name, g_home, g_away):
+    """
+    Evalúa si un pronóstico se cumple según las estadísticas de goles.
+    Retorna: 'Ganado', 'Perdido', o 'Anulado'.
+    """
+    pronostico_lower = pronostico.lower()
+    
+    # 1. Caso: Más de X goles (Overs)
+    if "más de" in pronostico_lower or "over" in pronostico_lower:
+        for token in pronostico_lower.split():
+            try:
+                linea = float(token.replace("goles", "").strip())
+                if (g_home + g_away) > linea:
+                    return "Ganado"
+                else:
+                    return "Perdido"
+            except ValueError:
+                continue
+                
+    # 2. Caso: Ambos anotan
+    if "ambos equipos anotan" in pronostico_lower or "ambos anotan" in pronostico_lower:
+        if g_home > 0 and g_away > 0:
+            return "Ganado"
+        else:
+            return "Perdido"
+            
+    # 3. Caso: Hándicap Asiático (ej: España -2.0)
+    if "hándicap" in pronostico_lower or "handicap" in pronostico_lower:
+        es_home = False
+        es_away = False
+        if home_name.lower() in pronostico_lower:
+            es_home = True
+        elif away_name.lower() in pronostico_lower:
+            es_away = True
+            
+        hc_valor = 0.0
+        for token in pronostico_lower.split():
+            if token.startswith("-") or token.startswith("+"):
+                try:
+                    hc_valor = float(token.replace("a", "").strip())
+                    break
+                except ValueError:
+                    continue
+                    
+        if es_home:
+            diff = g_home - g_away + hc_valor
+        elif es_away:
+            diff = g_away - g_home + hc_valor
+        else:
+            return "Anulado"
+            
+        if diff > 0:
+            return "Ganado"
+        elif diff == 0:
+            return "Anulado"
+        else:
+            return "Perdido"
+
+    # 4. Caso: Doble Oportunidad (ej: Irán o Empate)
+    if "o empate" in pronostico_lower or "doble oportunidad" in pronostico_lower:
+        if "empate" in pronostico_lower:
+            if home_name.lower() in pronostico_lower:
+                return "Ganado" if g_home >= g_away else "Perdido"
+            elif away_name.lower() in pronostico_lower:
+                return "Ganado" if g_away >= g_home else "Perdido"
+
+    # 5. Caso: Victoria directa (1X2)
+    if home_name.lower() in pronostico_lower:
+        return "Ganado" if g_home > g_away else "Perdido"
+    elif away_name.lower() in pronostico_lower:
+        return "Ganado" if g_away > g_home else "Perdido"
+        
+    return "Anulado"
+

@@ -3,10 +3,10 @@
 ## 📊 Estadísticas Consolidadas
 
 *   **Banca Inicial:** $10.00 USD
-*   **Banca Actual:** $4.00 USD
+*   **Banca Actual:** $2.00 USD
 *   **Dinero en Juego:** $4.00 USD
 *   **Yield / Rentabilidad:** `+100.00%`
-*   **ROI:** `-40.00%`
+*   **ROI:** `-60.00%`
 *   **Efectividad (Ganadas/Perdidas/Anuladas):** 1 ✅ / 0 ❌ / 0 🔄
 
 ## 🎫 Historial de Tickets Asentados

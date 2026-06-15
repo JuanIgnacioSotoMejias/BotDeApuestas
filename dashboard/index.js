@@ -12,12 +12,22 @@ document.addEventListener("DOMContentLoaded", async () => {
     const containerPicks = document.getElementById("active-picks-container");
     const containerSettled = document.getElementById("settled-tickets-container");
     
-    // Elementos de la vista Admin
+    // Elementos de la vista Admin/Predicciones
     const panelVisual = document.getElementById("visual-panel");
+    const panelPredictions = document.getElementById("predictions-panel");
     const panelAdmin = document.getElementById("admin-panel");
+    
     const tabVisualBtn = document.getElementById("tab-btn-visual");
+    const tabPredictionsBtn = document.getElementById("tab-btn-predictions");
     const tabAdminBtn = document.getElementById("tab-btn-admin");
+    
     const containerAdminTickets = document.getElementById("admin-active-tickets-list");
+    const containerProposedPicks = document.getElementById("proposed-picks-container");
+    const cardProposedPicks = document.getElementById("proposed-picks-card");
+    const predictionsTbody = document.getElementById("predictions-tbody");
+    
+    const btnActualizarResultados = document.getElementById("btn-actualizar-resultados");
+    const formAjusteBanca = document.getElementById("ajuste-banca-form");
     
     // Formularios e inputs
     const formCrearPicks = document.getElementById("crear-picks-form");
@@ -29,6 +39,16 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     let dataBanca = null;
 
+    // Conversión de Cuota Decimal a Americana
+    const decimalToAmerican = (odd) => {
+        if (!odd || odd <= 1.0) return "";
+        if (odd >= 2.0) {
+            return `+${Math.round((odd - 1.0) * 100)}`;
+        } else {
+            return `${Math.round(-100 / (odd - 1.0))}`;
+        }
+    };
+
     // Configurar fecha por defecto (Hoy)
     const hoy = new Date().toISOString().split('T')[0];
     inputFecha.value = hoy;
@@ -36,18 +56,21 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // --- TAB SYSTEM LÓGICA ---
     const setupTabs = () => {
-        tabVisualBtn.addEventListener("click", () => {
-            tabVisualBtn.classList.add("active");
-            tabAdminBtn.classList.remove("active");
-            panelVisual.style.display = "grid";
-            panelAdmin.style.display = "none";
-        });
+        const tabs = [
+            { btn: tabVisualBtn, panel: panelVisual },
+            { btn: tabPredictionsBtn, panel: panelPredictions },
+            { btn: tabAdminBtn, panel: panelAdmin }
+        ];
 
-        tabAdminBtn.addEventListener("click", () => {
-            tabAdminBtn.classList.add("active");
-            tabVisualBtn.classList.remove("active");
-            panelVisual.style.display = "none";
-            panelAdmin.style.display = "grid";
+        tabs.forEach(tab => {
+            tab.btn.addEventListener("click", () => {
+                tabs.forEach(t => {
+                    t.btn.classList.remove("active");
+                    t.panel.style.display = "none";
+                });
+                tab.btn.classList.add("active");
+                tab.panel.style.display = "grid";
+            });
         });
     };
 
@@ -306,9 +329,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
 
         renderStats();
+        renderProposedPicks();
         renderActivePicks();
         renderSettledTickets();
         renderAdminTickets();
+        renderPredictionsTable();
         renderChart();
     };
 
@@ -333,6 +358,120 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     };
 
+    const renderProposedPicks = () => {
+        if (!dataBanca) return;
+        const propuestas = dataBanca.propuestas_hoy;
+
+        containerProposedPicks.innerHTML = "";
+
+        if (propuestas && propuestas.parleys) {
+            let parleysFound = false;
+
+            Object.keys(propuestas.parleys).forEach(key => {
+                const parley = propuestas.parleys[key];
+                if (!parley || !parley.selecciones || parley.selecciones.length === 0) return;
+                parleysFound = true;
+
+                const isSegura = parley.nombre.toLowerCase().includes("segura");
+                const badgeClass = isSegura ? "" : "arriesgada";
+                const cuotaTotal = parseFloat(parley.cuota_total_estimada);
+
+                let html = `
+                    <div class="ticket-card" style="border-left: 3px solid ${isSegura ? 'var(--accent-green)' : 'var(--accent-red)'}; margin-bottom: 15px;">
+                        <div class="ticket-header">
+                            <h3>🤖 ${parley.nombre}</h3>
+                            <span class="badge-status ${badgeClass}">${parley.tipo_riesgo || (isSegura ? 'Bajo Riesgo' : 'Alto Riesgo')}</span>
+                        </div>
+                        <div class="selections-list">
+                `;
+
+                parley.selecciones.forEach(sel => {
+                    const cuotaDec = parseFloat(sel.cuota);
+                    html += `
+                        <div class="sel-item">
+                            <span class="sel-match">${sel.partido}</span>
+                            <span class="sel-pick">${sel.pronostico} (<b>x${cuotaDec.toFixed(2)} / ${decimalToAmerican(cuotaDec)}</b>)</span>
+                        </div>
+                    `;
+                });
+
+                html += `
+                        </div>
+                        <div class="ticket-footer" style="flex-direction: column; align-items: stretch; gap: 12px; background: rgba(255,255,255,0.01);">
+                            <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-secondary);">
+                                <span>Cuota Combinada: <b style="color: var(--accent-blue);">x${cuotaTotal.toFixed(2)} (${decimalToAmerican(cuotaTotal)})</b></span>
+                                <span>Prob. Combinada: <b>${parley.probabilidad_estadistica_combinada || 'N/A'}</b></span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 5px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <label style="font-size: 0.8rem; color: var(--text-secondary); white-space: nowrap; margin-bottom: 0;">Inversión ($):</label>
+                                    <input type="number" class="stake-input" value="1.00" step="0.50" min="0.10" style="width: 75px; background: rgba(255,255,255,0.03); border: 1px solid var(--card-border); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 0.85rem; outline: none;">
+                                </div>
+                                <button class="btn-primary btn-jugar-parley" style="padding: 6px 16px; font-size: 0.85rem; background: linear-gradient(135deg, var(--accent-purple) 0%, #6d28d9 100%); flex: 1;">🎮 Jugar Parley</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                const cardDom = document.createElement("div");
+                cardDom.innerHTML = html;
+
+                const btnJugar = cardDom.querySelector(".btn-jugar-parley");
+                const inputStake = cardDom.querySelector(".stake-input");
+
+                btnJugar.addEventListener("click", async () => {
+                    const stakeVal = parseFloat(inputStake.value);
+                    if (isNaN(stakeVal) || stakeVal <= 0) {
+                        alert("❌ Por favor ingresa un monto de inversión válido.");
+                        return;
+                    }
+
+                    if (confirm(`¿Confirmas que deseas jugar $${stakeVal.toFixed(2)} USD en la combinada "${parley.nombre}"?`)) {
+                        btnJugar.textContent = "⏳ Procesando...";
+                        btnJugar.disabled = true;
+
+                        try {
+                            const res = await fetch("/api/jugar_ticket", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                    tipo_parley: parley.nombre,
+                                    inversion: stakeVal,
+                                    cuota: cuotaTotal,
+                                    selecciones: parley.selecciones
+                                })
+                            });
+
+                            if (res.ok) {
+                                const resJson = await res.json();
+                                alert(`🎉 ${resJson.message}`);
+                                await cargarYRenderizar();
+                            } else {
+                                const errData = await res.json().catch(() => ({}));
+                                const errMsg = errData.error || "Error al colocar apuesta.";
+                                alert(`❌ ${errMsg}`);
+                            }
+                        } catch (err) {
+                            console.error(err);
+                            alert("❌ Error de comunicación con la API del Servidor.");
+                        } finally {
+                            btnJugar.textContent = "🎮 Jugar Parley";
+                            btnJugar.disabled = false;
+                        }
+                    }
+                });
+
+                containerProposedPicks.appendChild(cardDom.firstElementChild);
+            });
+
+            if (!parleysFound) {
+                containerProposedPicks.innerHTML = `<p class="loading-text">💡 No hay combinadas sugeridas para hoy. Utiliza el botón "Generar con IA" en la Consola Admin.</p>`;
+            }
+        } else {
+            containerProposedPicks.innerHTML = `<p class="loading-text">💡 No hay combinadas sugeridas para hoy. Utiliza el botón "Generar con IA" en la Consola Admin.</p>`;
+        }
+    };
+
     const renderActivePicks = () => {
         if (!dataBanca) return;
         const activas = dataBanca.apuestas_activas || [];
@@ -344,7 +483,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 const badgeClass = isSegura ? "" : "arriesgada";
                 
                 let html = `
-                    <div class="ticket-card">
+                    <div class="ticket-card" style="margin-bottom: 15px;">
                         <div class="ticket-header">
                             <h3>🎫 Ticket ${tkt.ticket_id}</h3>
                             <span class="badge-status ${badgeClass}">${tkt.tipo_parley}</span>
@@ -353,10 +492,11 @@ document.addEventListener("DOMContentLoaded", async () => {
                 `;
                 
                 tkt.selecciones.forEach(sel => {
+                    const cuotaDec = parseFloat(sel.cuota);
                     html += `
                         <div class="sel-item">
                             <span class="sel-match">${sel.partido}</span>
-                            <span class="sel-pick">${sel.pronostico} (${sel.cuota.toFixed(2)})</span>
+                            <span class="sel-pick">${sel.pronostico} (<b>x${cuotaDec.toFixed(2)} / ${decimalToAmerican(cuotaDec)}</b>)</span>
                         </div>
                     `;
                 });
@@ -365,14 +505,14 @@ document.addEventListener("DOMContentLoaded", async () => {
                         </div>
                         <div class="ticket-footer">
                             <span class="ticket-meta">Inversión: <b>$${tkt.inversion.toFixed(2)} USD</b></span>
-                            <span class="ticket-odds">Cuota: <b>x${tkt.cuota.toFixed(2)}</b> (Retorno: $${(tkt.retorno_potencial || 0).toFixed(2)})</span>
+                            <span class="ticket-odds">Cuota: <b>x${tkt.cuota.toFixed(2)} (${decimalToAmerican(tkt.cuota)})</b> (Retorno: $${(tkt.retorno_potencial || 0).toFixed(2)})</span>
                         </div>
                     </div>
                 `;
                 containerPicks.innerHTML += html;
             });
         } else {
-            containerPicks.innerHTML = `<p class="loading-text">💡 No tienes combinadas activas para hoy. Regístralas en la Consola Admin.</p>`;
+            containerPicks.innerHTML = `<p class="loading-text">💡 No tienes combinadas activas para hoy. Juega las propuestas de la IA o regístralas en la Consola Admin.</p>`;
         }
     };
 
@@ -407,7 +547,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                     <div class="settled-ticket">
                         <div class="settled-info">
                             <h4>Ticket ${tkt.ticket_id}</h4>
-                            <p>${tkt.tipo_parley} | Jornada: ${tkt.fecha_jornada}</p>
+                            <p>${tkt.tipo_parley} | Jornada: ${tkt.fecha_jornada} | Cuota: x${tkt.cuota.toFixed(2)} (${decimalToAmerican(tkt.cuota)})</p>
                         </div>
                         <div class="settled-outcome">
                             <div class="outcome-val ${classVal}">${txtMonto} USD</div>
@@ -422,7 +562,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     };
 
-    // --- CARGAR TICKETS ACTIVOS EN EL PANEL ADMIN ---
     const renderAdminTickets = () => {
         if (!dataBanca) return;
         const activas = dataBanca.apuestas_activas || [];
@@ -438,7 +577,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                         <span class="badge-status ${tkt.tipo_parley.toLowerCase().includes("segura") ? "" : "arriesgada"}">${tkt.tipo_parley}</span>
                     </div>
                     <p class="ticket-meta">
-                        Inversión: <b>$${tkt.inversion.toFixed(2)} USD</b> | Cuota: <b>x${tkt.cuota.toFixed(2)}</b>
+                        Inversión: <b>$${tkt.inversion.toFixed(2)} USD</b> | Cuota: <b>x${tkt.cuota.toFixed(2)} (${decimalToAmerican(tkt.cuota)})</b>
                     </p>
                     <div class="settle-actions">
                         <button class="settle-btn btn-win" data-id="${tkt.ticket_id}" data-action="Ganada">Ganado</button>
@@ -447,7 +586,6 @@ document.addEventListener("DOMContentLoaded", async () => {
                     </div>
                 `;
                 
-                // Eventos de liquidación directa
                 card.querySelectorAll(".settle-btn").forEach(btn => {
                     btn.addEventListener("click", async () => {
                         const id = btn.getAttribute("data-id");
@@ -463,6 +601,45 @@ document.addEventListener("DOMContentLoaded", async () => {
             });
         } else {
             containerAdminTickets.innerHTML = `<p class="loading-text">💡 No hay apuestas activas que asentar en este momento.</p>`;
+        }
+    };
+
+    const renderPredictionsTable = () => {
+        if (!dataBanca) return;
+        const preds = dataBanca.predicciones_ia || [];
+        predictionsTbody.innerHTML = "";
+
+        if (preds.length > 0) {
+            preds.forEach(p => {
+                const tr = document.createElement("tr");
+                tr.style.borderBottom = "1px solid rgba(255, 255, 255, 0.05)";
+
+                const badgeState = p.estado === "Ganado" ? "badge-status" : (p.estado === "Perdido" ? "badge-status arriesgada" : "badge-status");
+                const stateStyle = p.estado === "Ganado" ? "" : (p.estado === "Perdido" ? "" : "background: rgba(156,163,175,0.15); color: #9ca3af;");
+                
+                const fechaFmt = p.fecha ? p.fecha.split("T")[0] : "-";
+                const cuotaDec = parseFloat(p.cuota);
+                
+                tr.innerHTML = `
+                    <td style="padding: 12px 10px; font-weight: 500; color: var(--text-secondary);">${fechaFmt}</td>
+                    <td style="padding: 12px 10px; font-weight: 600;">${p.partido}</td>
+                    <td style="padding: 12px 10px; color: var(--accent-blue); font-weight: 500;">${p.pronostico}</td>
+                    <td style="padding: 12px 10px; font-weight: 500;">x${cuotaDec.toFixed(2)} (${decimalToAmerican(cuotaDec)})</td>
+                    <td style="padding: 12px 10px; text-align: center;">${p.probabilidad_estadistica}%</td>
+                    <td style="padding: 12px 10px; text-align: center;">${p.probabilidad_implicita}%</td>
+                    <td style="padding: 12px 10px; color: var(--accent-green); font-weight: 600;">${p.valor}</td>
+                    <td style="padding: 12px 10px; color: var(--text-secondary);">${p.tipo_parley}</td>
+                    <td style="padding: 12px 10px;"><span class="${badgeState}" style="${stateStyle}">${p.estado}</span></td>
+                    <td style="padding: 12px 10px; font-weight: 700; color: var(--accent-purple);">${p.resultado_partido || "-"}</td>
+                `;
+                predictionsTbody.appendChild(tr);
+            });
+        } else {
+            predictionsTbody.innerHTML = `
+                <tr>
+                    <td colspan="10" class="loading-text" style="text-align: center; padding: 20px;">No hay predicciones registradas en la base de datos.</td>
+                </tr>
+            `;
         }
     };
 
@@ -573,8 +750,97 @@ document.addEventListener("DOMContentLoaded", async () => {
         });
     };
 
+    // --- ELEMENTOS INTERACTIVOS: BANCA Y MARCADORES ---
+    const setupInteractiveElements = () => {
+        if (formAjusteBanca) {
+            formAjusteBanca.addEventListener("submit", async (e) => {
+                e.preventDefault();
+                const tipo = document.getElementById("ajuste-tipo").value;
+                const monto = parseFloat(document.getElementById("ajuste-monto").value);
+                const desc = document.getElementById("ajuste-desc").value.trim();
+
+                if (isNaN(monto) || monto <= 0) {
+                    alert("❌ Por favor ingresa un monto válido mayor a cero.");
+                    return;
+                }
+
+                const btnSubmit = formAjusteBanca.querySelector("button[type='submit']");
+                const originalText = btnSubmit.textContent;
+                btnSubmit.textContent = "⏳ Aplicando...";
+                btnSubmit.disabled = true;
+
+                try {
+                    const res = await fetch("/api/banca/ajustar", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ tipo, monto, descripcion: desc })
+                    });
+
+                    if (res.ok) {
+                        const resJson = await res.json();
+                        alert(`🎉 ${resJson.message}`);
+                        formAjusteBanca.reset();
+                        await cargarYRenderizar();
+                    } else {
+                        const err = await res.text();
+                        alert(`❌ Error al ajustar banca: ${err}`);
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert("❌ Error de comunicación con la API.");
+                } finally {
+                    btnSubmit.textContent = originalText;
+                    btnSubmit.disabled = false;
+                }
+            });
+        }
+
+        if (btnActualizarResultados) {
+            btnActualizarResultados.addEventListener("click", async () => {
+                const originalText = btnActualizarResultados.textContent;
+                btnActualizarResultados.textContent = "⏳ Sincronizando Marcadores...";
+                btnActualizarResultados.disabled = true;
+
+                try {
+                    const res = await fetch("/api/actualizar_resultados", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" }
+                    });
+
+                    if (res.ok) {
+                        const resJson = await res.json();
+                        const r = resJson.resumen;
+                        let msg = "Sincronización completada.\n";
+                        if (r.apuestas_liquidadas.length > 0) {
+                            msg += `🎫 Apuestas liquidadas: ${r.apuestas_liquidadas.join(", ")}\n`;
+                        } else {
+                            msg += "🎫 Sin apuestas liquidadas.\n";
+                        }
+                        if (r.predicciones_liquidadas.length > 0) {
+                            msg += `🤖 Predicciones liquidadas: ${r.predicciones_liquidadas.length}\n`;
+                        } else {
+                            msg += "🤖 Sin predicciones liquidadas.\n";
+                        }
+                        alert(`🔄 ${msg}`);
+                        await cargarYRenderizar();
+                    } else {
+                        const err = await res.text();
+                        alert(`❌ Error al actualizar marcadores: ${err}`);
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert("❌ Error de comunicación con la API de actualización.");
+                } finally {
+                    btnActualizarResultados.textContent = originalText;
+                    btnActualizarResultados.disabled = false;
+                }
+            });
+        }
+    };
+
     // --- INICIALIZACIÓN ---
     setupTabs();
     setupForm();
+    setupInteractiveElements();
     await cargarYRenderizar();
 });

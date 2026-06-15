@@ -90,3 +90,19 @@ class LogGeneracion(Base):
     prompt_usado: Mapped[Optional[str]] = mapped_column(String(10000))
     json_resultado: Mapped[Optional[str]] = mapped_column(String(10000))
 
+class PrediccionIA(Base):
+    __tablename__ = "predicciones_ia"
+    
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    fecha: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    partido: Mapped[str] = mapped_column(String(255))
+    pronostico: Mapped[str] = mapped_column(String(100))
+    cuota: Mapped[Decimal] = mapped_column(Numeric(6, 2))
+    probabilidad_estadistica: Mapped[Decimal] = mapped_column(Numeric(5, 2))
+    probabilidad_implicita: Mapped[Decimal] = mapped_column(Numeric(5, 2))
+    valor: Mapped[str] = mapped_column(String(50))
+    tipo_parley: Mapped[str] = mapped_column(String(50)) # Combinada Segura, Combinada de Alto Valor
+    estado: Mapped[str] = mapped_column(String(20), default="Pendiente") # Pendiente, Ganado, Perdido, Anulado
+    resultado_partido: Mapped[Optional[str]] = mapped_column(String(100))
+
+
