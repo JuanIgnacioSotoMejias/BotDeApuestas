@@ -118,11 +118,11 @@ class PicksGeneratorService:
                 if datos_historial:
                     archivadas = datos_historial.get("apuestas_archivadas", [])
                     if archivadas:
-                        # Ordenar por fecha_jornada descendente y tomar los últimos 5
-                        ultimas = sorted(archivadas, key=lambda x: x.get("fecha_jornada", ""), reverse=True)[:5]
-                        historial_previo += "\n=== HISTORIAL RECIENTE DE COMBINADAS Y RESULTADOS (RETROALIMENTACIÓN) ===\n"
-                        historial_previo += "A continuación se muestra el resultado de las últimas combinadas que generaste. "
-                        historial_previo += "Utiliza esta información para realizar autocrítica, analizar qué mercados o cuotas fallaron "
+                        # Ordenar por fecha_jornada descendente y tomar todos los tickets archivados
+                        ultimas = sorted(archivadas, key=lambda x: x.get("fecha_jornada", ""), reverse=True)
+                        historial_previo += "\n=== HISTORIAL COMPLETO DE COMBINADAS Y RESULTADOS (RETROALIMENTACIÓN) ===\n"
+                        historial_previo += "A continuación se muestra el resultado de todas las combinadas históricas que generaste. "
+                        historial_previo += "Utiliza este historial completo para realizar autocrítica profunda, analizar qué mercados o cuotas fallaron "
                         historial_previo += "y evitar repetir selecciones que resulten perdedoras:\n\n"
                         for idx_tkt, tkt in enumerate(ultimas):
                             estado_tkt = tkt.get("estado", "Finalizada")

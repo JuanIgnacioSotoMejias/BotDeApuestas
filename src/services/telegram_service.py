@@ -106,15 +106,8 @@ class TelegramService:
         print("TelegramService: Enviando reporte de picks...")
         return self.enviar_mensaje(msg)
 
-    def enviar_reporte_banca(self, HISTORIAL_PATH):
+    def enviar_reporte_banca(self, historial):
         """Formatea y envía el reporte financiero de banca."""
-        if not os.path.exists(HISTORIAL_PATH):
-            print(f"❌ TelegramService: No se encontró el archivo de banca en {HISTORIAL_PATH}")
-            return False
-            
-        with open(HISTORIAL_PATH, "r", encoding="utf-8") as f:
-            historial = json.load(f)
-            
         banca = historial.get("banca", {})
         stats = historial.get("estadisticas_globales", {})
         activas = historial.get("apuestas_activas", [])

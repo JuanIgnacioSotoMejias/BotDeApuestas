@@ -49,7 +49,7 @@ class GestorBancaService:
     def __init__(self):
         self.base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         self.log_path = os.path.join(self.base_dir, "logs_apuestas.md")
-        self.historial_path = os.path.join(self.base_dir, "historial_apuestas.json")
+
 
 
     # --- WRAPPERS SÍNCRONOS PÚBLICOS ---

@@ -123,7 +123,8 @@ def main():
     # --- PROCESAMIENTO MODO BANK ---
     if modo == "--bank":
         print("🚀 [MODO BANK] Enviando reporte de banca...")
-        tg.enviar_reporte_banca(banca_srv.historial_path)
+        datos = banca_srv.cargar_historial()
+        tg.enviar_reporte_banca(datos)
         sys.exit(0)
 
     # --- PROCESAMIENTO MODO PUBLISH ---
@@ -192,7 +193,8 @@ def main():
         banca_srv.guardar_historial(datos)
         
         # Enviar reporte actualizado a Telegram
-        tg.enviar_reporte_banca(banca_srv.historial_path)
+        tg.enviar_reporte_banca(datos)
+
 
 if __name__ == "__main__":
     from src.database.session import init_db

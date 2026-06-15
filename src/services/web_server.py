@@ -154,7 +154,8 @@ class DashboardAPIHandler(BaseHTTPRequestHandler):
                 banca_srv.guardar_historial(datos)
                 # Reportar estado financiero a Telegram
                 tg = TelegramService()
-                tg.enviar_reporte_banca(banca_srv.historial_path)
+                tg.enviar_reporte_banca(datos)
+
                 
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")

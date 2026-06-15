@@ -309,7 +309,7 @@ class TelegramController:
                     # Enviar notificación del reporte de banca actualizado en Telegram
                     from src.services.telegram_service import TelegramService
                     tg_service = TelegramService()
-                    tg_service.enviar_reporte_banca(banca_srv.historial_path)
+                    tg_service.enviar_reporte_banca(datos)
                 else:
                     self.bot.answer_callback_query(call.id, "❌ Error: El ticket no se encontró o no pudo ser liquidado.")
                     
