@@ -320,40 +320,63 @@ class PicksGeneratorService:
             with open(self.jugadas_path, "w", encoding="utf-8") as f:
                 json.dump(datos_picks, f, indent=2, ensure_ascii=False)
                 
-            # 7. Registrar en la base de datos de predicciones de IA
+            # 7. Registrar en la base de datos de predicciones de IA (evitando redundancias/duplicados)
             async def guardar_predicciones_db():
                 from decimal import Decimal
                 from src.database.models import PrediccionIA
+                from sqlalchemy import select
                 async with async_session_maker() as session:
                     # Combinada Segura
                     p_seguro = datos_picks["parleys"]["parley_seguro"]
                     for sel in p_seguro.get("selecciones", []):
-                        pred = PrediccionIA(
-                            partido=sel["partido"],
-                            pronostico=sel["pronostico"],
-                            cuota=Decimal(str(sel["cuota"])),
-                            probabilidad_estadistica=Decimal(str(sel.get("probabilidad_estadistica", "70%").replace("%", "").strip())),
-                            probabilidad_implicita=Decimal(str(sel.get("probabilidad_implicita", "60%").replace("%", "").strip())),
-                            valor=sel.get("valor", "Sí"),
-                            tipo_parley="Combinada Segura",
-                            estado="Pendiente"
+                        stmt = select(PrediccionIA).where(
+                            PrediccionIA.partido == sel["partido"],
+                            PrediccionIA.pronostico == sel["pronostico"],
+                            PrediccionIA.tipo_parley == "Combinada Segura",
+                            PrediccionIA.estado == "Pendiente"
                         )
-                        session.add(pred)
+                        res = await session.execute(stmt)
+                        existing = res.scalar_one_or_none()
+                        if not existing:
+                            pred = PrediccionIA(
+                                partido=sel["partido"],
+                                pronostico=sel["pronostico"],
+                                cuota=Decimal(str(sel["cuota"])),
+                                probabilidad_estadistica=Decimal(str(sel.get("probabilidad_estadistica", "70%").replace("%", "").strip())),
+                                probabilidad_implicita=Decimal(str(sel.get("probabilidad_implicita", "60%").replace("%", "").strip())),
+                                valor=sel.get("valor", "Sí"),
+                                tipo_parley="Combinada Segura",
+                                estado="Pendiente"
+                            )
+                            session.add(pred)
+                        else:
+                            print(f"💡 PicksGeneratorService: Predicción duplicada omitida en Combinada Segura: {sel['partido']} -> {sel['pronostico']}")
                         
                     # Combinada de Alto Valor
                     p_arriesgado = datos_picks["parleys"]["parley_arriesgado"]
                     for sel in p_arriesgado.get("selecciones", []):
-                        pred = PrediccionIA(
-                            partido=sel["partido"],
-                            pronostico=sel["pronostico"],
-                            cuota=Decimal(str(sel["cuota"])),
-                            probabilidad_estadistica=Decimal(str(sel.get("probabilidad_estadistica", "60%").replace("%", "").strip())),
-                            probabilidad_implicita=Decimal(str(sel.get("probabilidad_implicita", "50%").replace("%", "").strip())),
-                            valor=sel.get("valor", "Sí"),
-                            tipo_parley="Combinada de Alto Valor",
-                            estado="Pendiente"
+                        stmt = select(PrediccionIA).where(
+                            PrediccionIA.partido == sel["partido"],
+                            PrediccionIA.pronostico == sel["pronostico"],
+                            PrediccionIA.tipo_parley == "Combinada de Alto Valor",
+                            PrediccionIA.estado == "Pendiente"
                         )
-                        session.add(pred)
+                        res = await session.execute(stmt)
+                        existing = res.scalar_one_or_none()
+                        if not existing:
+                            pred = PrediccionIA(
+                                partido=sel["partido"],
+                                pronostico=sel["pronostico"],
+                                cuota=Decimal(str(sel["cuota"])),
+                                probabilidad_estadistica=Decimal(str(sel.get("probabilidad_estadistica", "60%").replace("%", "").strip())),
+                                probabilidad_implicita=Decimal(str(sel.get("probabilidad_implicita", "50%").replace("%", "").strip())),
+                                valor=sel.get("valor", "Sí"),
+                                tipo_parley="Combinada de Alto Valor",
+                                estado="Pendiente"
+                            )
+                            session.add(pred)
+                        else:
+                            print(f"💡 PicksGeneratorService: Predicción duplicada omitida en Combinada de Alto Valor: {sel['partido']} -> {sel['pronostico']}")
                     await session.commit()
 
             try:
