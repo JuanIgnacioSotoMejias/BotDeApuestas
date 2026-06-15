@@ -426,6 +426,30 @@ class DashboardAPIHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 self.send_error(500, f"Error interno del servidor: {str(e)}")
             return
+
+        # API POST: Limpiar Predicciones de IA de la Base de Datos
+        if self.path == "/api/predicciones/limpiar":
+            try:
+                from sqlalchemy import delete
+                from src.database.session import async_session_maker
+                from src.database.models import PrediccionIA
+                from src.services.gestor_banca_service import run_async
+                
+                async def limpiar_db():
+                    async with async_session_maker() as session:
+                        stmt = delete(PrediccionIA)
+                        await session.execute(stmt)
+                        await session.commit()
+                
+                run_async(limpiar_db())
+                
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": True, "message": "Todas las predicciones de IA han sido eliminadas con éxito."}).encode("utf-8"))
+            except Exception as e:
+                self.send_error(500, f"Error al eliminar predicciones de la base de datos: {str(e)}")
+            return
             
         self.send_error(404, "Endpoint de API no encontrado.")
 

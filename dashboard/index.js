@@ -143,6 +143,41 @@ document.addEventListener("DOMContentLoaded", async () => {
             });
         }
 
+        const btnLimpiarPredicciones = document.getElementById("btn-limpiar-predicciones");
+        if (btnLimpiarPredicciones) {
+            btnLimpiarPredicciones.addEventListener("click", async () => {
+                if (!confirm("🧹 ¿Estás seguro de que deseas eliminar permanentemente todas las predicciones de IA de la base de datos? Esta acción no se puede deshacer y afectará tanto local como producción.")) {
+                    return;
+                }
+                
+                const originalText = btnLimpiarPredicciones.textContent;
+                btnLimpiarPredicciones.textContent = "⏳ Limpiando...";
+                btnLimpiarPredicciones.disabled = true;
+                
+                try {
+                    const res = await fetch("/api/predicciones/limpiar", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" }
+                    });
+                    
+                    if (res.ok) {
+                        const data = await res.json();
+                        alert("✅ " + data.message);
+                        await cargarYRenderizar();
+                    } else {
+                        const err = await res.text();
+                        alert("❌ Error al limpiar predicciones: " + err);
+                    }
+                } catch (e) {
+                    console.error(e);
+                    alert("❌ Error de comunicación con el servidor.");
+                } finally {
+                    btnLimpiarPredicciones.textContent = originalText;
+                    btnLimpiarPredicciones.disabled = false;
+                }
+            });
+        }
+
         // Agregar selección inicial por defecto
         containerSeguro.appendChild(createSelectionRowHTML("seguro"));
         containerArriesgado.appendChild(createSelectionRowHTML("arriesgado"));
