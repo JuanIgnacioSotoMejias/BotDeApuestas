@@ -290,4 +290,9 @@ def run_server():
         httpd.server_close()
 
 if __name__ == "__main__":
+    from src.database.session import init_db
+    from src.services.gestor_banca_service import run_async
+    print("🗄️ Inicializando base de datos en servidor web...")
+    run_async(init_db())
     run_server()
+

@@ -195,4 +195,9 @@ def main():
         tg.enviar_reporte_banca(banca_srv.historial_path)
 
 if __name__ == "__main__":
+    from src.database.session import init_db
+    from src.services.gestor_banca_service import run_async
+    print("🗄️ Inicializando base de datos en orquestador...")
+    run_async(init_db())
     main()
+

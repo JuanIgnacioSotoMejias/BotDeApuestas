@@ -50,8 +50,7 @@ class GestorBancaService:
         self.base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         self.log_path = os.path.join(self.base_dir, "logs_apuestas.md")
         self.historial_path = os.path.join(self.base_dir, "historial_apuestas.json")
-        # Inicializar tablas de forma segura en la DB
-        run_async(init_db())
+
 
     # --- WRAPPERS SÍNCRONOS PÚBLICOS ---
     def cargar_historial(self):

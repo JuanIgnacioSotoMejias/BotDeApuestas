@@ -9,3 +9,10 @@ __pycache__/
 .ipynb_checkpoints/
 .vscode/
 .idea/
+
+# Ignorar base de datos local y estados temporales
+db.sqlite3
+*.sqlite3
+historial_apuestas.json*
+jugadas_lunes_15.json
+

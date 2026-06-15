@@ -79,3 +79,14 @@ class Transaccion(Base):
     )
     
     usuario: Mapped["Usuario"] = relationship(back_populates="transacciones")
+
+class LogGeneracion(Base):
+    __tablename__ = "logs_generaciones"
+    
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    fecha: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    exito: Mapped[bool] = mapped_column(Boolean, default=False)
+    detalles: Mapped[Optional[str]] = mapped_column(String(500))
+    prompt_usado: Mapped[Optional[str]] = mapped_column(String(10000))
+    json_resultado: Mapped[Optional[str]] = mapped_column(String(10000))
+
