@@ -26,6 +26,23 @@ document.addEventListener("DOMContentLoaded", async () => {
     const containerParleysHistory = document.getElementById("parleys-history-container");
     let parleyFilter = "all";
     
+    // Variables de paginación
+    let parleysCurrentPage = 1;
+    const parleysPageSize = 5;
+    let predictionsCurrentPage = 1;
+    const predictionsPageSize = 10;
+    
+    // Controles de paginación
+    const parleysPaginationDiv = document.getElementById("parleys-pagination");
+    const parleysPrevBtn = document.getElementById("parleys-prev-btn");
+    const parleysNextBtn = document.getElementById("parleys-next-btn");
+    const parleysPageInfo = document.getElementById("parleys-page-info");
+    
+    const predictionsPaginationDiv = document.getElementById("predictions-pagination");
+    const predictionsPrevBtn = document.getElementById("predictions-prev-btn");
+    const predictionsNextBtn = document.getElementById("predictions-next-btn");
+    const predictionsPageInfo = document.getElementById("predictions-page-info");
+    
     const containerAdminTickets = document.getElementById("admin-active-tickets-list");
     const containerProposedPicks = document.getElementById("proposed-picks-container");
     const cardProposedPicks = document.getElementById("proposed-picks-card");
@@ -667,8 +684,31 @@ document.addEventListener("DOMContentLoaded", async () => {
         const preds = dataBanca.predicciones_ia || [];
         predictionsTbody.innerHTML = "";
 
-        if (preds.length > 0) {
-            preds.forEach(p => {
+        const totalItems = preds.length;
+        const totalPages = Math.ceil(totalItems / predictionsPageSize) || 1;
+        
+        if (predictionsCurrentPage > totalPages) {
+            predictionsCurrentPage = totalPages;
+        }
+        if (predictionsCurrentPage < 1) {
+            predictionsCurrentPage = 1;
+        }
+        
+        if (totalItems > predictionsPageSize) {
+            predictionsPaginationDiv.style.display = "flex";
+            predictionsPageInfo.textContent = `Página ${predictionsCurrentPage} de ${totalPages}`;
+            predictionsPrevBtn.disabled = predictionsCurrentPage === 1;
+            predictionsNextBtn.disabled = predictionsCurrentPage === totalPages;
+        } else {
+            predictionsPaginationDiv.style.display = "none";
+        }
+        
+        const startIndex = (predictionsCurrentPage - 1) * predictionsPageSize;
+        const endIndex = startIndex + predictionsPageSize;
+        const paginatedPreds = preds.slice(startIndex, endIndex);
+
+        if (paginatedPreds.length > 0) {
+            paginatedPreds.forEach(p => {
                 const tr = document.createElement("tr");
                 tr.style.borderBottom = "1px solid rgba(255, 255, 255, 0.05)";
 
@@ -708,6 +748,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 filterBtns.forEach(b => b.classList.remove("active"));
                 btn.classList.add("active");
                 parleyFilter = btn.getAttribute("data-filter");
+                parleysCurrentPage = 1;
                 renderParleysHistory();
             });
         });
@@ -809,14 +850,37 @@ document.addEventListener("DOMContentLoaded", async () => {
             todos = todos.filter(t => t.estado === parleyFilter);
         }
         
+        const totalItems = todos.length;
+        const totalPages = Math.ceil(totalItems / parleysPageSize) || 1;
+        
+        if (parleysCurrentPage > totalPages) {
+            parleysCurrentPage = totalPages;
+        }
+        if (parleysCurrentPage < 1) {
+            parleysCurrentPage = 1;
+        }
+        
+        if (totalItems > parleysPageSize) {
+            parleysPaginationDiv.style.display = "flex";
+            parleysPageInfo.textContent = `Página ${parleysCurrentPage} de ${totalPages}`;
+            parleysPrevBtn.disabled = parleysCurrentPage === 1;
+            parleysNextBtn.disabled = parleysCurrentPage === totalPages;
+        } else {
+            parleysPaginationDiv.style.display = "none";
+        }
+        
+        const startIndex = (parleysCurrentPage - 1) * parleysPageSize;
+        const endIndex = startIndex + parleysPageSize;
+        const paginatedTodos = todos.slice(startIndex, endIndex);
+        
         containerParleysHistory.innerHTML = "";
         
-        if (todos.length === 0) {
+        if (paginatedTodos.length === 0) {
             containerParleysHistory.innerHTML = `<p class="loading-text">💡 No se encontraron parleys con el estado seleccionado.</p>`;
             return;
         }
         
-        todos.forEach(tkt => {
+        paginatedTodos.forEach(tkt => {
             const isGanada = tkt.estado === "Ganada";
             const isPerdida = tkt.estado === "Perdida";
             const isAnulada = tkt.estado === "Anulada";
@@ -1135,10 +1199,44 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     };
 
+    // --- CONFIGURACIÓN DE CONTROLES DE PAGINACIÓN ---
+    const setupPagination = () => {
+        if (parleysPrevBtn) {
+            parleysPrevBtn.addEventListener("click", () => {
+                if (parleysCurrentPage > 1) {
+                    parleysCurrentPage--;
+                    renderParleysHistory();
+                }
+            });
+        }
+        if (parleysNextBtn) {
+            parleysNextBtn.addEventListener("click", () => {
+                parleysCurrentPage++;
+                renderParleysHistory();
+            });
+        }
+        
+        if (predictionsPrevBtn) {
+            predictionsPrevBtn.addEventListener("click", () => {
+                if (predictionsCurrentPage > 1) {
+                    predictionsCurrentPage--;
+                    renderPredictionsTable();
+                }
+            });
+        }
+        if (predictionsNextBtn) {
+            predictionsNextBtn.addEventListener("click", () => {
+                predictionsCurrentPage++;
+                renderPredictionsTable();
+            });
+        }
+    };
+
     // --- INICIALIZACIÓN ---
     setupTabs();
     setupParleyFilters();
     setupForm();
     setupInteractiveElements();
+    setupPagination();
     await cargarYRenderizar();
 });
