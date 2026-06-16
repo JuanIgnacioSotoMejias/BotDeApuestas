@@ -66,7 +66,7 @@ class TheOddsAPIService:
             url = (
                 f"{self.base_url}/sports/{sport_key}/odds/"
                 f"?apiKey={self.api_key.strip()}"
-                f"&regions=eu&markets=h2h,draw_no_bet,spreads"
+                f"&regions=eu&markets=h2h,spreads"
             )
             try:
                 print(f"📡 TheOddsAPIService: Consultando cuotas para '{sport_key}'...")
@@ -91,6 +91,8 @@ class TheOddsAPIService:
                         bm = next((b for b in bookmakers if b.get("key") == "bet365"), bookmakers[0])
                         
                         cuotas_match = {
+                            "home_team": home_team,
+                            "away_team": away_team,
                             "bookmaker": bm.get("title"),
                             "1X2_Home": None,
                             "1X2_Away": None,
@@ -115,15 +117,6 @@ class TheOddsAPIService:
                                     elif name.lower() in ["draw", "empate"]:
                                         cuotas_match["1X2_Draw"] = float(price)
                                         
-                            elif m_key == "draw_no_bet":
-                                for out in outcomes:
-                                    name = out.get("name")
-                                    price = out.get("price")
-                                    if name == home_team:
-                                        cuotas_match["DNB_Home"] = float(price)
-                                    elif name == away_team:
-                                        cuotas_match["DNB_Away"] = float(price)
-                                        
                             elif m_key == "spreads":
                                 for out in outcomes:
                                     cuotas_match["Asian_Handicap"].append({
@@ -131,6 +124,25 @@ class TheOddsAPIService:
                                         "point": out.get("point"),
                                         "price": float(out.get("price"))
                                     })
+                        
+                        # Calcular DNB matemáticamente a partir de las cuotas 1X2
+                        if cuotas_match["1X2_Home"] and cuotas_match["1X2_Draw"]:
+                            try:
+                                odd_home = cuotas_match["1X2_Home"]
+                                odd_draw = cuotas_match["1X2_Draw"]
+                                if odd_draw > 1.0:
+                                    cuotas_match["DNB_Home"] = round(odd_home * (1.0 - 1.0 / odd_draw), 2)
+                            except Exception:
+                                pass
+                                
+                        if cuotas_match["1X2_Away"] and cuotas_match["1X2_Draw"]:
+                            try:
+                                odd_away = cuotas_match["1X2_Away"]
+                                odd_draw = cuotas_match["1X2_Draw"]
+                                if odd_draw > 1.0:
+                                    cuotas_match["DNB_Away"] = round(odd_away * (1.0 - 1.0 / odd_draw), 2)
+                            except Exception:
+                                pass
                                     
                         todas_cuotas[match_key] = cuotas_match
             except Exception as e:

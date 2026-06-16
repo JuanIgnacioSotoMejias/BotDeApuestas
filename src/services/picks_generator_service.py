@@ -74,6 +74,51 @@ class PicksGeneratorService:
         """Consulta la API de la Copa del Mundo en busca de partidos programados."""
         partidos = []
         
+        # Diccionario de traducción inglés -> español para compatibilidad
+        traducciones_es = {
+            "Spain": "España",
+            "Cape Verde": "Cabo Verde",
+            "Iran": "Irán",
+            "New Zealand": "Nueva Zelanda",
+            "Uruguay": "Uruguay",
+            "Saudi Arabia": "Arabia Saudita",
+            "Belgium": "Bélgica",
+            "Egypt": "Egipto",
+            "Germany": "Alemania",
+            "France": "Francia",
+            "Brazil": "Brasil",
+            "Argentina": "Argentina",
+            "Italy": "Italia",
+            "Netherlands": "Países Bajos",
+            "Portugal": "Portugal",
+            "Mexico": "México",
+            "United States": "Estados Unidos",
+            "Canada": "Canadá",
+            "Senegal": "Senegal",
+            "Iraq": "Irak",
+            "Norway": "Noruega",
+            "Austria": "Austria",
+            "Jordan": "Jordania",
+            "Algeria": "Argelia",
+        }
+        
+        # 0. Intentar desde The Odds API si está configurada (garantiza partidos con cuotas en bookmakers)
+        try:
+            cuotas = self.odds_api.obtener_cuotas_deportivas()
+            if cuotas:
+                for val in cuotas.values():
+                    home = val.get("home_team")
+                    away = val.get("away_team")
+                    if home and away:
+                        home_es = traducciones_es.get(home, home)
+                        away_es = traducciones_es.get(away, away)
+                        partidos.append(f"{home_es} vs. {away_es}")
+                if partidos:
+                    print(f"📡 PicksGeneratorService: Obtenidos {len(partidos)} partidos con cuotas reales de The Odds API.")
+                    return partidos
+        except Exception as e:
+            print(f"⚠️ PicksGeneratorService: Error al obtener partidos de The Odds API: {e}")
+            
         # 1. Intentar API de 2026 (worldcup26.ir)
         try:
             import ssl
@@ -97,39 +142,12 @@ class PicksGeneratorService:
                     home = match.get("home_team_name_en")
                     away = match.get("away_team_name_en")
                     if home and away:
-                        # Diccionario de traducción inglés -> español para compatibilidad
-                        traducciones_es = {
-                            "Spain": "España",
-                            "Cape Verde": "Cabo Verde",
-                            "Iran": "Irán",
-                            "New Zealand": "Nueva Zelanda",
-                            "Uruguay": "Uruguay",
-                            "Saudi Arabia": "Arabia Saudita",
-                            "Belgium": "Bélgica",
-                            "Egypt": "Egipto",
-                            "Germany": "Alemania",
-                            "France": "Francia",
-                            "Brazil": "Brasil",
-                            "Argentina": "Argentina",
-                            "Italy": "Italia",
-                            "Netherlands": "Países Bajos",
-                            "Portugal": "Portugal",
-                            "Mexico": "México",
-                            "United States": "Estados Unidos",
-                            "Canada": "Canadá",
-                            "Senegal": "Senegal",
-                            "Iraq": "Irak",
-                            "Norway": "Noruega",
-                            "Austria": "Austria",
-                            "Jordan": "Jordania",
-                            "Algeria": "Argelia",
-                        }
                         home_es = traducciones_es.get(home, home)
                         away_es = traducciones_es.get(away, away)
                         partidos.append(f"{home_es} vs. {away_es}")
         except Exception as e:
             print(f"⚠️ PicksGeneratorService: No se pudo obtener partidos de la API 2026: {e}")
-
+ 
         # 2. Intentar API de 2022 (worldcupjson.net)
         if not partidos:
             try:
@@ -152,7 +170,7 @@ class PicksGeneratorService:
                             partidos.append(f"{home} vs. {away}")
             except Exception as e:
                 print(f"⚠️ PicksGeneratorService: No se pudo obtener partidos de la API 2022: {e}")
-        
+         
         # Fallback si no hay partidos programados hoy en la API
         if not partidos:
             print("💡 PicksGeneratorService: Usando lista de partidos de demostración...")
