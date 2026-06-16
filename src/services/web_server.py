@@ -107,6 +107,36 @@ class DashboardAPIHandler(BaseHTTPRequestHandler):
                 self.send_error(500, f"Error al cargar logs: {str(e)}")
             return
 
+        if self.path == "/api/debug/full_logs":
+            try:
+                from src.database.session import async_session_maker
+                from src.database.models import LogGeneracion
+                from sqlalchemy import select
+                from src.services.gestor_banca_service import run_async
+                
+                async def obtener_full_logs():
+                    async with async_session_maker() as session:
+                        stmt = select(LogGeneracion).order_by(LogGeneracion.fecha.desc()).limit(5)
+                        res = await session.execute(stmt)
+                        logs = res.scalars().all()
+                        return [{
+                            "id": l.id,
+                            "fecha": l.fecha.isoformat(),
+                            "exito": l.exito,
+                            "detalles": l.detalles,
+                            "prompt_usado": l.prompt_usado,
+                            "json_resultado": l.json_resultado
+                        } for l in logs]
+                
+                log_data = run_async(obtener_full_logs())
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps(log_data, ensure_ascii=False).encode("utf-8"))
+            except Exception as e:
+                self.send_error(500, f"Error al cargar full logs: {str(e)}")
+            return
+
         # Limpiar query parameters del path
         clean_path = self.path.split("?", 1)[0]
         
