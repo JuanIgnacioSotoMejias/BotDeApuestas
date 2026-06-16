@@ -34,26 +34,79 @@ class PicksGeneratorService:
     def obtener_partidos_del_dia(self):
         """Consulta la API de la Copa del Mundo en busca de partidos programados."""
         partidos = []
+        
+        # 1. Intentar API de 2026 (worldcup26.ir)
         try:
-            url = Settings.SPORTS_API_URL or "https://worldcupjson.net/matches"
-            req = urllib.request.Request(
-                url,
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-            )
-            with urllib.request.urlopen(req, timeout=8) as response:
-                matches = json.loads(response.read().decode("utf-8"))
+            import ssl
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
             
-            hoy_str = datetime.date.today().strftime("%Y-%m-%d")
+            req = urllib.request.Request(
+                "https://worldcup26.ir/get/games",
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
+            with urllib.request.urlopen(req, timeout=15, context=ctx) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                matches = data.get("games", [])
+                
+            hoy_str = datetime.date.today().strftime("%m/%d/%Y") # "06/15/2026"
             
             for match in matches:
-                dt_match = match.get("datetime", "")
-                if hoy_str in dt_match or not dt_match:
-                    home = match.get("home_team", {}).get("name")
-                    away = match.get("away_team", {}).get("name")
+                dt_match = match.get("local_date", "")
+                if hoy_str in dt_match:
+                    home = match.get("home_team_name_en")
+                    away = match.get("away_team_name_en")
                     if home and away:
-                        partidos.append(f"{home} vs. {away}")
+                        # Diccionario de traducción inglés -> español para compatibilidad
+                        traducciones_es = {
+                            "Spain": "España",
+                            "Cape Verde": "Cabo Verde",
+                            "Iran": "Irán",
+                            "New Zealand": "Nueva Zelanda",
+                            "Uruguay": "Uruguay",
+                            "Saudi Arabia": "Arabia Saudita",
+                            "Belgium": "Bélgica",
+                            "Egypt": "Egipto",
+                            "Germany": "Alemania",
+                            "France": "Francia",
+                            "Brazil": "Brasil",
+                            "Argentina": "Argentina",
+                            "Italy": "Italia",
+                            "Netherlands": "Países Bajos",
+                            "Portugal": "Portugal",
+                            "Mexico": "México",
+                            "United States": "Estados Unidos",
+                            "Canada": "Canadá",
+                        }
+                        home_es = traducciones_es.get(home, home)
+                        away_es = traducciones_es.get(away, away)
+                        partidos.append(f"{home_es} vs. {away_es}")
         except Exception as e:
-            print(f"⚠️ PicksGeneratorService: No se pudo obtener partidos de la API: {e}")
+            print(f"⚠️ PicksGeneratorService: No se pudo obtener partidos de la API 2026: {e}")
+
+        # 2. Intentar API de 2022 (worldcupjson.net)
+        if not partidos:
+            try:
+                url = Settings.SPORTS_API_URL or "https://worldcupjson.net/matches"
+                req = urllib.request.Request(
+                    url,
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+                )
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    matches = json.loads(response.read().decode("utf-8"))
+                
+                hoy_str = datetime.date.today().strftime("%Y-%m-%d")
+                
+                for match in matches:
+                    dt_match = match.get("datetime", "")
+                    if hoy_str in dt_match or not dt_match:
+                        home = match.get("home_team", {}).get("name")
+                        away = match.get("away_team", {}).get("name")
+                        if home and away:
+                            partidos.append(f"{home} vs. {away}")
+            except Exception as e:
+                print(f"⚠️ PicksGeneratorService: No se pudo obtener partidos de la API 2022: {e}")
         
         # Fallback si no hay partidos programados hoy en la API
         if not partidos:

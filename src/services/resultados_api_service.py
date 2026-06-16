@@ -17,6 +17,92 @@ if hasattr(sys.stdout, 'reconfigure'):
 if hasattr(sys.stderr, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8')
 
+def normalizar_equipo(nombre):
+    if not nombre:
+        return ""
+    import unicodedata
+    # Quitar tildes y diacríticos
+    nombre_norm = "".join(
+        c for c in unicodedata.normalize('NFD', nombre)
+        if unicodedata.category(c) != 'Mn'
+    ).lower().strip()
+    
+    # Tabla de traducción manual de español e inglés a una clave única
+    traducciones = {
+        "espana": "spain",
+        "cabo verde": "cape verde",
+        "iran": "iran",
+        "nueva zelanda": "new zealand",
+        "nueva zelandia": "new zealand",
+        "arabia saudita": "saudi arabia",
+        "arabia saudi": "saudi arabia",
+        "estados unidos": "united states",
+        "eeuu": "united states",
+        "ee.uu.": "united states",
+        "alemania": "germany",
+        "costa de marfil": "ivory coast",
+        "paises bajos": "netherlands",
+        "holanda": "netherlands",
+        "suecia": "sweden",
+        "francia": "france",
+        "irak": "iraq",
+        "noruega": "norway",
+        "senegal": "senegal",
+        "japon": "japan",
+        "turquia": "turkey",
+        "catar": "qatar",
+        "qatar": "qatar",
+        "suiza": "switzerland",
+        "haiti": "haiti",
+        "escocia": "scotland",
+        "inglaterra": "england",
+        "croacia": "croatia",
+        "jordania": "jordan",
+        "argelia": "algeria",
+        "portugal": "portugal",
+        "uzbekistan": "uzbekistan",
+        "panama": "panama",
+        "republica checa": "czech republic",
+        "tunez": "tunisia",
+        "tunisia": "tunisia",
+        "republica democratica del congo": "democratic republic of the congo",
+        "rd congo": "democratic republic of the congo",
+        "dr congo": "democratic republic of the congo",
+        "congo dr": "democratic republic of the congo",
+        "sudafrica": "south africa",
+        "marruecos": "morocco",
+        "ecuador": "ecuador",
+        "curazao": "curaçao",
+        "curacao": "curaçao",
+        "belgica": "belgium",
+        "mexico": "mexico",
+        "corea del sur": "south korea",
+        "paraguay": "paraguay",
+        "corea del norte": "north korea",
+        "gales": "wales",
+        "polonia": "poland",
+        "dinamarca": "denmark",
+        "ucrania": "ukraine",
+        "austria": "austria",
+        "camerun": "cameroon",
+        "ghana": "ghana",
+        "serbia": "serbia",
+        "suiza": "switzerland",
+        "costa rica": "costa rica",
+        "canada": "canada",
+        "brasil": "brazil",
+        "brazil": "brazil",
+    }
+    
+    return traducciones.get(nombre_norm, nombre_norm)
+
+def coinciden_equipos(eq1, eq2):
+    if not eq1 or not eq2:
+        return False
+    n1 = normalizar_equipo(eq1)
+    n2 = normalizar_equipo(eq2)
+    return n1 == n2 or n1 in n2 or n2 in n1
+
 class ResultadosAPIService:
     def __init__(self):
         # API pública gratuita para la Copa del Mundo (sin requerimiento de API Key)
@@ -25,34 +111,65 @@ class ResultadosAPIService:
     def obtener_marcador_api(self, equipo_local, equipo_visitante):
         """
         Consulta la API de la Copa del Mundo en busca del marcador de un partido específico.
+        Intenta primero la API de 2026 (worldcup26.ir) y luego la API de 2022 (worldcupjson.net).
         Retorna una tupla: (goles_local, goles_visitante, finalizado) o (None, None, False) si no se halla.
         """
+        # 1. Intentar API de 2026 (worldcup26.ir)
+        try:
+            import ssl
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            
+            req = urllib.request.Request(
+                "https://worldcup26.ir/get/games",
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
+            with urllib.request.urlopen(req, timeout=20, context=ctx) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                matches = data.get("games", [])
+                
+            for match in matches:
+                home_team = match.get("home_team_name_en", "")
+                away_team = match.get("away_team_name_en", "")
+                
+                if coinciden_equipos(equipo_local, home_team) and coinciden_equipos(equipo_visitante, away_team):
+                    
+                    finished = match.get("finished", "").upper() == "TRUE" or match.get("time_elapsed", "").lower() == "finished"
+                    goles_local = match.get("home_score")
+                    goles_visitante = match.get("away_score")
+                    
+                    if goles_local is not None and goles_visitante is not None:
+                        try:
+                            return int(goles_local), int(goles_visitante), finished
+                        except ValueError:
+                            pass
+        except Exception as e:
+            print(f"⚠️ Error al conectar con la API de 2026 (worldcup26.ir): {e}")
+
+        # 2. Intentar API de 2022 (worldcupjson.net)
         try:
             req = urllib.request.Request(
-                self.api_url,
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+                "https://worldcupjson.net/matches",
+                headers={"User-Agent": "Mozilla/5.0"}
             )
             with urllib.request.urlopen(req, timeout=8) as response:
                 matches = json.loads(response.read().decode("utf-8"))
                 
             for match in matches:
-                home_team = match.get("home_team", {}).get("name", "").lower()
-                away_team = match.get("away_team", {}).get("name", "").lower()
+                home_team = match.get("home_team", {}).get("name", "")
+                away_team = match.get("away_team", {}).get("name", "")
                 
-                # Comprobar coincidencia de nombres (búsqueda parcial)
-                if (equipo_local.lower() in home_team or home_team in equipo_local.lower()) and \
-                   (equipo_visitante.lower() in away_team or away_team in equipo_visitante.lower()):
+                if coinciden_equipos(equipo_local, home_team) and coinciden_equipos(equipo_visitante, away_team):
                     
                     status = match.get("status", "")
                     finalizado = status.lower() in ["completed", "final", "finished"]
-                    
-                    # Extraer goles
                     goles_local = match.get("home_team", {}).get("goals")
                     goles_visitante = match.get("away_team", {}).get("goals")
                     
                     return goles_local, goles_visitante, finalizado
         except Exception as e:
-            print(f"⚠️ Error al conectar con la API de resultados: {e}")
+            print(f"⚠️ Error al conectar con la API de 2022 (worldcupjson): {e}")
             
         return None, None, False
  

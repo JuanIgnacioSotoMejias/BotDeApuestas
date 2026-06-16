@@ -677,7 +677,7 @@ class GestorBancaService:
         import urllib.request
         from sqlalchemy import select
         from src.database.models import PrediccionIA, Evento, Ticket, TicketSeleccion
-        from src.services.resultados_api_service import ResultadosAPIService
+        from src.services.resultados_api_service import ResultadosAPIService, coinciden_equipos
         from src.database.session import async_session_maker
         
         print("🔄 [AutoEvaluador] Comprobando partidos finalizados...")
@@ -703,18 +703,33 @@ class GestorBancaService:
         if not partidos_pendientes:
             return
             
-        # 2. Consultar la API de partidos
-        api_url = "https://worldcupjson.net/matches"
+        # 2. Consultar la API de partidos (2026 y fallback 2022)
+        matches_2026 = []
+        try:
+            import ssl
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            req = urllib.request.Request(
+                "https://worldcup26.ir/get/games",
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
+            with urllib.request.urlopen(req, timeout=20, context=ctx) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                matches_2026 = data.get("games", [])
+        except Exception as e:
+            print(f"⚠️ [AutoEvaluador] Error al consultar API 2026: {e}")
+
+        matches_2022 = []
         try:
             req = urllib.request.Request(
-                api_url,
+                "https://worldcupjson.net/matches",
                 headers={"User-Agent": "Mozilla/5.0"}
             )
             with urllib.request.urlopen(req, timeout=10) as response:
-                matches = json.loads(response.read().decode("utf-8"))
+                matches_2022 = json.loads(response.read().decode("utf-8"))
         except Exception as e:
-            print(f"⚠️ [AutoEvaluador] Error al consultar API de partidos: {e}")
-            return
+            print(f"⚠️ [AutoEvaluador] Error al consultar API 2022: {e}")
             
         # 3. Filtrar partidos terminados hace más de 20 minutos (kickoff + 125 min)
         resultados_a_aplicar = {}
@@ -728,32 +743,58 @@ class GestorBancaService:
             else:
                 home_p, away_p = partido_p, ""
                 
-            for match in matches:
-                home_team = match.get("home_team", {}).get("name", "").lower()
-                away_team = match.get("away_team", {}).get("name", "").lower()
+            encontrado = False
+            
+            # Intentar con partidos 2026
+            for match in matches_2026:
+                home_team = match.get("home_team_name_en", "")
+                away_team = match.get("away_team_name_en", "")
                 
-                if (home_p.lower() in home_team or home_team in home_p.lower()) and \
-                   (away_p.lower() in away_team or away_team in away_p.lower()):
+                if coinciden_equipos(home_p, home_team) and coinciden_equipos(away_p, away_team):
+                    encontrado = True
+                    finished = match.get("finished", "").upper() == "TRUE" or match.get("time_elapsed", "").lower() == "finished"
                     
-                    status = match.get("status", "")
-                    finalizado = status.lower() in ["completed", "final", "finished"]
-                    
-                    if finalizado:
-                        dt_str = match.get("datetime")
+                    if finished:
+                        dt_str = match.get("local_date")
                         if dt_str:
                             try:
-                                kickoff = datetime.datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-                                # 125 minutos = 105 minutos de partido + 20 minutos de espera
-                                if now >= kickoff + datetime.timedelta(minutes=125):
-                                    g_home = match.get("home_team", {}).get("goals")
-                                    g_away = match.get("away_team", {}).get("goals")
+                                kickoff = datetime.datetime.strptime(dt_str, "%m/%d/%Y %H:%M")
+                                now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+                                if now_utc >= kickoff + datetime.timedelta(minutes=125):
+                                    g_home = match.get("home_score")
+                                    g_away = match.get("away_score")
                                     if g_home is not None and g_away is not None:
-                                        resultados_a_aplicar[partido_p] = (g_home, g_away)
-                                        print(f"🎯 [AutoEvaluador] Partido '{partido_p}' apto para liquidación automática ({g_home}-{g_away}).")
+                                        resultados_a_aplicar[partido_p] = (int(g_home), int(g_away))
+                                        print(f"🎯 [AutoEvaluador 2026] Partido '{partido_p}' apto para liquidación automática ({g_home}-{g_away}).")
                             except Exception as e_parse:
-                                print(f"⚠️ [AutoEvaluador] Error al parsear fecha del partido: {e_parse}")
+                                print(f"⚠️ [AutoEvaluador] Error al parsear fecha 2026 del partido: {e_parse}")
                     break
                     
+            # Si no se halló en la de 2026, probar en la de 2022
+            if not encontrado:
+                for match in matches_2022:
+                    home_team = match.get("home_team", {}).get("name", "")
+                    away_team = match.get("away_team", {}).get("name", "")
+                    
+                    if coinciden_equipos(home_p, home_team) and coinciden_equipos(away_p, away_team):
+                        status = match.get("status", "")
+                        finalizado = status.lower() in ["completed", "final", "finished"]
+                        
+                        if finalizado:
+                            dt_str = match.get("datetime")
+                            if dt_str:
+                                try:
+                                    kickoff = datetime.datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+                                    if now >= kickoff + datetime.timedelta(minutes=125):
+                                        g_home = match.get("home_team", {}).get("goals")
+                                        g_away = match.get("away_team", {}).get("goals")
+                                        if g_home is not None and g_away is not None:
+                                            resultados_a_aplicar[partido_p] = (int(g_home), int(g_away))
+                                            print(f"🎯 [AutoEvaluador 2022] Partido '{partido_p}' apto para liquidación automática ({g_home}-{g_away}).")
+                                except Exception as e_parse:
+                                    print(f"⚠️ [AutoEvaluador] Error al parsear fecha 2022 del partido: {e_parse}")
+                        break
+                        
         if not resultados_a_aplicar:
             return
             
@@ -845,6 +886,31 @@ def evaluar_pronostico(pronostico, home_name, away_name, g_home, g_away):
     """
     pronostico_lower = pronostico.lower()
     
+    # 0. Caso: Draw No Bet / DNB / Sin Empate (ej: DNB (España))
+    if "dnb" in pronostico_lower or "draw no bet" in pronostico_lower or "sin empate" in pronostico_lower:
+        from src.services.resultados_api_service import normalizar_equipo
+        norm_pronostico = normalizar_equipo(pronostico_lower)
+        norm_home = normalizar_equipo(home_name)
+        norm_away = normalizar_equipo(away_name)
+        
+        es_home = False
+        es_away = False
+        if norm_home in norm_pronostico:
+            es_home = True
+        elif norm_away in norm_pronostico:
+            es_away = True
+        else:
+            # Fallback por defecto a local
+            es_home = True
+            
+        if g_home == g_away:
+            return "Anulado"
+            
+        if es_home:
+            return "Ganado" if g_home > g_away else "Perdido"
+        else:
+            return "Ganado" if g_away > g_home else "Perdido"
+            
     # 1. Caso: Más de X goles (Overs)
     if "más de" in pronostico_lower or "over" in pronostico_lower:
         for token in pronostico_lower.split():
