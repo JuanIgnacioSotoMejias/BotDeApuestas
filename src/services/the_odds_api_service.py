@@ -60,14 +60,10 @@ class TheOddsAPIService:
         except Exception as e:
             print(f"⚠️ TheOddsAPIService: No se pudo obtener lista de deportes ({e}). Usando fallback.")
 
-        # Priorizar Mundial y torneos internacionales en las consultas
-        prioritarios = ["soccer_fifa_world_cup", "soccer_international"]
-        def obtener_prioridad(k):
-            for idx, p in enumerate(prioritarios):
-                if p in k:
-                    return idx
-            return len(prioritarios)
-        active_soccer_keys = sorted(active_soccer_keys, key=obtener_prioridad)
+        # Filtrar para obtener SOLO partidos de la Copa del Mundo (World Cup)
+        active_soccer_keys = [k for k in active_soccer_keys if "fifa_world_cup" in k or "world_cup" in k]
+        if not active_soccer_keys:
+            active_soccer_keys = ["soccer_fifa_world_cup"]
 
         # Consultar odds para cada soccer key activo
         todas_cuotas = {}
