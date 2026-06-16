@@ -105,16 +105,34 @@ class PicksGeneratorService:
         # 0. Intentar desde The Odds API si está configurada (garantiza partidos con cuotas en bookmakers)
         try:
             cuotas = self.odds_api.obtener_cuotas_deportivas()
+            fecha_hoy = datetime.date.today().strftime("%Y-%m-%d")
+            
+            def obtener_fecha_local_utc4(commence_time_str):
+                if not commence_time_str:
+                    return None
+                try:
+                    dt = datetime.datetime.fromisoformat(commence_time_str.replace('Z', '+00:00'))
+                    tz_offset = datetime.timezone(datetime.timedelta(hours=-4))
+                    dt_local = dt.astimezone(tz_offset)
+                    return dt_local.strftime("%Y-%m-%d")
+                except Exception:
+                    return None
+
             if cuotas:
                 for val in cuotas.values():
-                    home = val.get("home_team")
-                    away = val.get("away_team")
-                    if home and away:
-                        home_es = traducciones_es.get(home, home)
-                        away_es = traducciones_es.get(away, away)
-                        partidos.append(f"{home_es} vs. {away_es}")
+                    commence = val.get("commence_time")
+                    fecha_partido = obtener_fecha_local_utc4(commence)
+                    
+                    # Filtrar partidos que coincidan con la jornada de hoy (en UTC-4)
+                    if fecha_partido == fecha_hoy:
+                        home = val.get("home_team")
+                        away = val.get("away_team")
+                        if home and away:
+                            home_es = traducciones_es.get(home, home)
+                            away_es = traducciones_es.get(away, away)
+                            partidos.append(f"{home_es} vs. {away_es}")
                 if partidos:
-                    print(f"📡 PicksGeneratorService: Obtenidos {len(partidos)} partidos con cuotas reales de The Odds API.")
+                    print(f"📡 PicksGeneratorService: Obtenidos {len(partidos)} partidos del día con cuotas reales de The Odds API.")
                     return partidos
         except Exception as e:
             print(f"⚠️ PicksGeneratorService: Error al obtener partidos de The Odds API: {e}")
@@ -306,6 +324,8 @@ class PicksGeneratorService:
                         cuotas_texto += f"  - Ganador 1X2: Local={cuotas.get('1X2_Home', 'N/A')}, Empate={cuotas.get('1X2_Draw', 'N/A')}, Visitante={cuotas.get('1X2_Away', 'N/A')}\n"
                     if cuotas.get("DNB_Home") or cuotas.get("DNB_Away"):
                         cuotas_texto += f"  - Draw No Bet (DNB / Empate Anula Apuesta): Local={cuotas.get('DNB_Home', 'N/A')}, Visitante={cuotas.get('DNB_Away', 'N/A')}\n"
+                    if cuotas.get("DC_Home_Draw") or cuotas.get("DC_Away_Draw") or cuotas.get("DC_Home_Away"):
+                        cuotas_texto += f"  - Doble Oportunidad (DC): Local o Empate (1X)={cuotas.get('DC_Home_Draw', 'N/A')}, Visitante o Empate (X2)={cuotas.get('DC_Away_Draw', 'N/A')}, Local o Visitante (12)={cuotas.get('DC_Home_Away', 'N/A')}\n"
                     
                     ah_list = cuotas.get("Asian_Handicap") or cuotas.get("Asian Handicap")
                     if ah_list:
@@ -380,7 +400,12 @@ class PicksGeneratorService:
                 "!!! REGLAS DE OBLIGATORIO CUMPLIMIENTO (CRÍTICAS) !!!\n"
                 "1. Solo puedes pronosticar partidos que estén en la lista de arriba. Está terminantemente prohibido inventar partidos o usar placeholders como 'X vs Y', 'Fórmula roja vs Azul', 'Nombre Local vs. Nombre Visitante' o cualquier otro.\n"
                 "2. El campo 'partido' en el JSON resultante debe ser exactamente el nombre de uno de los partidos proporcionados en la lista de arriba.\n"
-                "3. El campo 'pronostico' debe ser una recomendación real y concreta de mercado (ej: 'DNB Francia', 'Francia +0.5 Hándicap Asiático', 'Doble Oportunidad Francia o Empate'). No escribas explicaciones genéricas ni descripciones de texto en el campo 'pronostico'.\n"
+                "3. El campo 'pronostico' debe ser una recomendación real y concreta de mercado:\n"
+                "   - Para victoria directa: 'Nombre Equipo a Ganar' (ej: 'Francia a Ganar')\n"
+                "   - Para Draw No Bet (DNB): 'DNB Nombre Equipo' (ej: 'DNB Francia')\n"
+                "   - Para Doble Oportunidad: 'Nombre Equipo o Empate' (ej: 'Francia o Empate') o '[Local] o [Visitante]' (ej: 'Francia o Senegal')\n"
+                "   - Para Hándicap Asiático: 'Nombre Equipo Handicap' (ej: 'Francia -0.5 Hándicap Asiático')\n"
+                "   No escribas explicaciones genéricas ni descripciones de texto en el campo 'pronostico'.\n"
                 "4. El campo 'cuota' debe ser un número float (ej. 1.35), nunca un texto o una frase.\n"
                 "5. El campo 'probabilidad_estadistica' debe ser un string con un porcentaje (ej. '85%').\n\n"
                 "Debes retornar ÚNICAMENTE un formato JSON limpio y sin bloques de código markdown (sin ```json), sin explicaciones de texto, respetando exactamente el siguiente esquema:\n"
@@ -550,8 +575,13 @@ class PicksGeneratorService:
             async def guardar_predicciones_db():
                 from decimal import Decimal
                 from src.database.models import PrediccionIA
-                from sqlalchemy import select
+                from sqlalchemy import select, delete
                 async with async_session_maker() as session:
+                    # Limpiar predicciones pendientes anteriores para evitar duplicaciones
+                    await session.execute(
+                        delete(PrediccionIA).where(PrediccionIA.estado == "Pendiente")
+                    )
+                    
                     # Combinada Segura
                     p_seguro = datos_picks["parleys"]["parley_seguro"]
                     for sel in p_seguro.get("selecciones", []):

@@ -87,14 +87,17 @@ def parsear_ganador_seleccion(pronostico, home_name, away_name, g_home, g_away):
         else:
             return "Perdido"
 
-    # 4. Caso: Doble Oportunidad (ej: Irán o Empate)
+    # 4. Caso: Doble Oportunidad (ej: Francia o Empate, Francia o Senegal)
+    # 4.1. Caso Equipo o Empate (1X / X2)
     if "o empate" in pronostico_lower or "doble oportunidad" in pronostico_lower:
-        if "empate" in pronostico_lower:
-            # Encontrar el equipo
-            if home_name.lower() in pronostico_lower:
-                return "Ganado" if g_home >= g_away else "Perdido"
-            elif away_name.lower() in pronostico_lower:
-                return "Ganado" if g_away >= g_home else "Perdido"
+        if home_name.lower() in pronostico_lower:
+            return "Ganado" if g_home >= g_away else "Perdido"
+        elif away_name.lower() in pronostico_lower:
+            return "Ganado" if g_away >= g_home else "Perdido"
+
+    # 4.2. Caso Equipo o Equipo (12)
+    if " o " in pronostico_lower and home_name.lower() in pronostico_lower and away_name.lower() in pronostico_lower:
+        return "Ganado" if g_home != g_away else "Perdido"
 
     # 5. Caso: Victoria directa (1X2)
     # Por ejemplo "España a Ganador", "Uruguay a Ganador"

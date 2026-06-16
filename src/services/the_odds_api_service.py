@@ -60,6 +60,15 @@ class TheOddsAPIService:
         except Exception as e:
             print(f"⚠️ TheOddsAPIService: No se pudo obtener lista de deportes ({e}). Usando fallback.")
 
+        # Priorizar Mundial y torneos internacionales en las consultas
+        prioritarios = ["soccer_fifa_world_cup", "soccer_international"]
+        def obtener_prioridad(k):
+            for idx, p in enumerate(prioritarios):
+                if p in k:
+                    return idx
+            return len(prioritarios)
+        active_soccer_keys = sorted(active_soccer_keys, key=obtener_prioridad)
+
         # Consultar odds para cada soccer key activo
         todas_cuotas = {}
         for sport_key in active_soccer_keys[:5]:  # limitar a max 5 para no consumir toda la cuota
@@ -94,11 +103,15 @@ class TheOddsAPIService:
                             "home_team": home_team,
                             "away_team": away_team,
                             "bookmaker": bm.get("title"),
+                            "commence_time": event.get("commence_time"),
                             "1X2_Home": None,
                             "1X2_Away": None,
                             "1X2_Draw": None,
                             "DNB_Home": None,
                             "DNB_Away": None,
+                            "DC_Home_Draw": None,
+                            "DC_Away_Draw": None,
+                            "DC_Home_Away": None,
                             "Asian_Handicap": []
                         }
                         
@@ -125,13 +138,14 @@ class TheOddsAPIService:
                                         "price": float(out.get("price"))
                                     })
                         
-                        # Calcular DNB matemáticamente a partir de las cuotas 1X2
+                        # Calcular DNB y Doble Oportunidad matemáticamente a partir de las cuotas 1X2
                         if cuotas_match["1X2_Home"] and cuotas_match["1X2_Draw"]:
                             try:
                                 odd_home = cuotas_match["1X2_Home"]
                                 odd_draw = cuotas_match["1X2_Draw"]
                                 if odd_draw > 1.0:
                                     cuotas_match["DNB_Home"] = round(odd_home * (1.0 - 1.0 / odd_draw), 2)
+                                    cuotas_match["DC_Home_Draw"] = round(1.0 / (1.0 / odd_home + 1.0 / odd_draw), 2)
                             except Exception:
                                 pass
                                 
@@ -141,6 +155,15 @@ class TheOddsAPIService:
                                 odd_draw = cuotas_match["1X2_Draw"]
                                 if odd_draw > 1.0:
                                     cuotas_match["DNB_Away"] = round(odd_away * (1.0 - 1.0 / odd_draw), 2)
+                                    cuotas_match["DC_Away_Draw"] = round(1.0 / (1.0 / odd_away + 1.0 / odd_draw), 2)
+                            except Exception:
+                                pass
+
+                        if cuotas_match["1X2_Home"] and cuotas_match["1X2_Away"]:
+                            try:
+                                odd_home = cuotas_match["1X2_Home"]
+                                odd_away = cuotas_match["1X2_Away"]
+                                cuotas_match["DC_Home_Away"] = round(1.0 / (1.0 / odd_home + 1.0 / odd_away), 2)
                             except Exception:
                                 pass
                                     
@@ -168,7 +191,7 @@ class TheOddsAPIService:
         def normalizar(s):
             s = s.lower()
             s = "".join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
-            # Mapeos comunes
+            # Mapeo completo de nombres de equipos (español normalizado -> inglés/API normalizado)
             mapeo = {
                 "irak": "iraq",
                 "noruega": "norway",
@@ -183,6 +206,42 @@ class TheOddsAPIService:
                 "senegal": "senegal",
                 "austria": "austria",
                 "jordania": "jordan",
+                "nueva zelanda": "new zealand",
+                "paises bajos": "netherlands",
+                "estados unidos": "usa",
+                "united states": "usa",
+                "usa": "usa",
+                "alemania": "germany",
+                "brasil": "brazil",
+                "italia": "italy",
+                "mexico": "mexico",
+                "canada": "canada",
+                "inglaterra": "england",
+                "croacia": "croatia",
+                "republica democratica del congo": "dr congo",
+                "rd congo": "dr congo",
+                "r.d. congo": "dr congo",
+                "congo dr": "dr congo",
+                "sudafrica": "south africa",
+                "corea del sur": "south korea",
+                "suecia": "sweden",
+                "suiza": "switzerland",
+                "japon": "japan",
+                "tunez": "tunisia",
+                "republica checa": "czech republic",
+                "bosnia y herzegovina": "bosnia & herzegovina",
+                "bosnia-herzegovina": "bosnia & herzegovina",
+                "bosnia": "bosnia & herzegovina",
+                "haiti": "haiti",
+                "marruecos": "morocco",
+                "qatar": "qatar",
+                "escocia": "scotland",
+                "costa de marfil": "ivory coast",
+                "curazao": "curacao",
+                "panama": "panama",
+                "uzbekistan": "uzbekistan",
+                "colombia": "colombia",
+                "ghana": "ghana",
             }
             return mapeo.get(s, s)
 
