@@ -119,14 +119,26 @@ class DashboardAPIHandler(BaseHTTPRequestHandler):
                         stmt = select(LogGeneracion).order_by(LogGeneracion.fecha.desc()).limit(5)
                         res = await session.execute(stmt)
                         logs = res.scalars().all()
-                        return [{
-                            "id": l.id,
-                            "fecha": l.fecha.isoformat(),
-                            "exito": l.exito,
-                            "detalles": l.detalles,
-                            "prompt_usado": l.prompt_usado,
-                            "json_resultado": l.json_resultado
-                        } for l in logs]
+                        
+                        from src.config.settings import Settings
+                        return {
+                            "logs": [{
+                                "id": l.id,
+                                "fecha": l.fecha.isoformat(),
+                                "exito": l.exito,
+                                "detalles": l.detalles,
+                                "prompt_usado": l.prompt_usado,
+                                "json_resultado": l.json_resultado
+                            } for l in logs],
+                            "config_status": {
+                                "api_football_key_len": len(Settings.API_FOOTBALL_KEY) if Settings.API_FOOTBALL_KEY else 0,
+                                "api_football_key_prefix": Settings.API_FOOTBALL_KEY[:6] if Settings.API_FOOTBALL_KEY else "",
+                                "api_football_key_suffix": Settings.API_FOOTBALL_KEY[-6:] if Settings.API_FOOTBALL_KEY else "",
+                                "api_football_url": Settings.API_FOOTBALL_URL,
+                                "llm_provider": Settings.LLM_PROVIDER,
+                                "openrouter_key_len": len(Settings.OPENROUTER_API_KEY) if Settings.OPENROUTER_API_KEY else 0,
+                            }
+                        }
                 
                 log_data = run_async(obtener_full_logs())
                 self.send_response(200)
