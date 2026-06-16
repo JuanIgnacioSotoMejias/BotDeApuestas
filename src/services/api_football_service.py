@@ -209,3 +209,41 @@ class APIFootballService:
         self._guardar_cache(cache)
 
         return contexto
+
+    def obtener_cuotas(self, fixture_id):
+        """Consulta las cuotas para un fixture_id específico."""
+        response = self._request_api("odds", {"fixture": fixture_id})
+        if not response:
+            return None
+            
+        cuotas = {}
+        for item in response:
+            bookmakers = item.get("bookmakers", [])
+            for bm in bookmakers:
+                # Priorizar Bet365
+                bets = bm.get("bets", [])
+                for bet in bets:
+                    bet_name = bet.get("name")
+                    values = bet.get("values", [])
+                    
+                    if bet_name in ["Match Winner", "1X2"]:
+                        for val in values:
+                            value_name = val.get("value")
+                            odd = val.get("odd")
+                            cuotas[f"1X2_{value_name}"] = float(odd)
+                            
+                    elif bet_name == "Draw No Bet":
+                        for val in values:
+                            value_name = val.get("value")
+                            odd = val.get("odd")
+                            cuotas[f"DNB_{value_name}"] = float(odd)
+                            
+                    elif bet_name == "Asian Handicap":
+                        hcp_list = []
+                        for val in values:
+                            hcp_list.append({
+                                "name": val.get("value"),
+                                "price": float(val.get("odd"))
+                            })
+                        cuotas["Asian_Handicap"] = hcp_list
+        return cuotas

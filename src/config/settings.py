@@ -19,6 +19,7 @@ class Settings:
     DATABASE_URL = "sqlite+aiosqlite:///db.sqlite3"
     API_FOOTBALL_KEY = None
     API_FOOTBALL_URL = "https://v3.football.api-sports.io"
+    THE_ODDS_API_KEY = None
     
     @classmethod
     def load(cls):
@@ -57,6 +58,8 @@ class Settings:
                             cls.API_FOOTBALL_KEY = val
                         elif key.strip() == "API_FOOTBALL_URL":
                             cls.API_FOOTBALL_URL = val
+                        elif key.strip() == "THE_ODDS_API_KEY":
+                            cls.THE_ODDS_API_KEY = val
                         elif key.strip() == "DATABASE_URL":
                             if val.startswith("postgresql://"):
                                 val = val.replace("postgresql://", "postgresql+asyncpg://", 1)
@@ -92,6 +95,8 @@ class Settings:
             cls.API_FOOTBALL_KEY = os.getenv("API_FOOTBALL_KEY")
         if not os.getenv("API_FOOTBALL_URL") is None:
             cls.API_FOOTBALL_URL = os.getenv("API_FOOTBALL_URL")
+        if not os.getenv("THE_ODDS_API_KEY") is None:
+            cls.THE_ODDS_API_KEY = os.getenv("THE_ODDS_API_KEY")
         if not os.getenv("DATABASE_URL") is None:
             db_url = os.getenv("DATABASE_URL")
             if db_url.startswith("postgresql://"):

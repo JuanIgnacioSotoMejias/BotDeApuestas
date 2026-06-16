@@ -20,6 +20,7 @@ from src.services.telegram_service import TelegramService
 from src.database.models import LogGeneracion
 from src.database.session import async_session_maker
 from src.services.gestor_banca_service import run_async
+from src.services.the_odds_api_service import TheOddsAPIService
 
 
 class PicksGeneratorService:
@@ -28,8 +29,46 @@ class PicksGeneratorService:
         self.llm = LLMService()
         self.banca_srv = GestorBancaService()
         self.tg = TelegramService()
+        self.odds_api = TheOddsAPIService()
         self.base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         self.jugadas_path = os.path.join(self.base_dir, "jugadas_lunes_15.json")
+
+    def encontrar_partido_correspondiente(self, partido_propuesto, partidos_del_dia):
+        if not partido_propuesto:
+            return None
+        import unicodedata
+        
+        def normalizar(s):
+            s = s.lower().replace(".", "").replace(" vs ", " vs. ")
+            # Quitar acentos
+            s = "".join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+            return s.strip()
+
+        propuesto_norm = normalizar(partido_propuesto)
+        equipos_propuestos = [normalizar(eq) for eq in propuesto_norm.split("vs.")]
+        if len(equipos_propuestos) != 2:
+            return None
+            
+        eq1_p, eq2_p = equipos_propuestos[0].strip(), equipos_propuestos[1].strip()
+            
+        for p_dia in partidos_del_dia:
+            p_dia_norm = normalizar(p_dia)
+            if p_dia_norm == propuesto_norm:
+                return p_dia
+                
+            parts_dia = [normalizar(eq) for eq in p_dia_norm.split("vs.")]
+            if len(parts_dia) == 2:
+                eq1_d, eq2_d = parts_dia[0].strip(), parts_dia[1].strip()
+                # Coincidencia exacta (orden original o invertido)
+                if (eq1_p == eq1_d and eq2_p == eq2_d) or (eq1_p == eq2_d and eq2_p == eq1_d):
+                    return p_dia
+                # Coincidencia flexible (subcadenas)
+                if (eq1_p in eq1_d or eq1_d in eq1_p) and (eq2_p in eq2_d or eq2_d in eq2_p):
+                    return p_dia
+                if (eq1_p in eq2_d or eq2_d in eq1_p) and (eq2_p in eq1_d or eq1_d in eq2_p):
+                    return p_dia
+                    
+        return None
 
     def obtener_partidos_del_dia(self):
         """Consulta la API de la Copa del Mundo en busca de partidos programados."""
@@ -78,6 +117,12 @@ class PicksGeneratorService:
                             "Mexico": "México",
                             "United States": "Estados Unidos",
                             "Canada": "Canadá",
+                            "Senegal": "Senegal",
+                            "Iraq": "Irak",
+                            "Norway": "Noruega",
+                            "Austria": "Austria",
+                            "Jordan": "Jordania",
+                            "Algeria": "Argelia",
                         }
                         home_es = traducciones_es.get(home, home)
                         away_es = traducciones_es.get(away, away)
@@ -214,10 +259,54 @@ class PicksGeneratorService:
             datos_texto = ""
             for idx, datos_dict in enumerate(datos_partidos):
                 datos_texto += f"\n--- PARTIDO #{idx+1} ---\n"
+                
+                local = datos_dict.get("equipo_local", "N/A")
+                visitante = datos_dict.get("equipo_visitante", "N/A")
+                
+                # Intentar obtener cuotas reales
+                cuotas = None
+                
+                # 1. Intentar desde API-Football si hay fixture_id y la clave es válida
+                fixture_id = datos_dict.get("fixture_id")
+                if fixture_id:
+                    try:
+                        cuotas = self.scout.api_football.obtener_cuotas(fixture_id)
+                    except Exception as e:
+                        print(f"⚠️ PicksGeneratorService: No se pudo obtener cuotas de API-Football: {e}")
+                        
+                # 2. Intentar desde The Odds API
+                if not cuotas:
+                    try:
+                        cuotas = self.odds_api.obtener_cuotas_para_partido(local, visitante)
+                    except Exception as e:
+                        print(f"⚠️ PicksGeneratorService: No se pudo obtener cuotas de The Odds API: {e}")
+                
+                # Formatear cuotas si existen
+                cuotas_texto = "Cuotas Reales (Bet365 / Bookmakers Oficiales):\n"
+                if cuotas:
+                    if cuotas.get("1X2_Home") or cuotas.get("1X2_Away") or cuotas.get("1X2_Draw"):
+                        cuotas_texto += f"  - Ganador 1X2: Local={cuotas.get('1X2_Home', 'N/A')}, Empate={cuotas.get('1X2_Draw', 'N/A')}, Visitante={cuotas.get('1X2_Away', 'N/A')}\n"
+                    if cuotas.get("DNB_Home") or cuotas.get("DNB_Away"):
+                        cuotas_texto += f"  - Draw No Bet (DNB / Empate Anula Apuesta): Local={cuotas.get('DNB_Home', 'N/A')}, Visitante={cuotas.get('DNB_Away', 'N/A')}\n"
+                    
+                    ah_list = cuotas.get("Asian_Handicap") or cuotas.get("Asian Handicap")
+                    if ah_list:
+                        ah_str_list = []
+                        for ah in ah_list[:6]: # Max 6 handicaps principales
+                            if "point" in ah:
+                                ah_str_list.append(f"{ah.get('name')} {ah.get('point')} (Cuota {ah.get('price')})")
+                            else:
+                                ah_str_list.append(f"{ah.get('name')} (Cuota {ah.get('price')})")
+                        cuotas_texto += f"  - Hándicaps Asiáticos: {', '.join(ah_str_list)}\n"
+                    
+                    if cuotas_texto == "Cuotas Reales (Bet365 / Bookmakers Oficiales):\n":
+                        cuotas_texto = "Cuotas Reales de Apuestas: No disponibles para los mercados principales en la API.\n"
+                else:
+                    cuotas_texto = "Cuotas Reales de Apuestas: No disponibles en este momento (API Key ausente o inactiva). Por favor, estima cuotas y probabilidades matemáticas extremadamente realistas según el nivel relativo de los equipos (ej: favorito claro tiene cuota 1.15 a 1.40, partido parejo 1.90 a 2.30, etc.).\n"
+
                 if datos_dict.get("encontrado_en_api") or datos_dict.get("api_football_encontrado"):
-                    local = datos_dict.get("equipo_local", "N/A")
-                    visitante = datos_dict.get("equipo_visitante", "N/A")
                     datos_texto += f"Partido: {local} vs. {visitante}\n"
+                    datos_texto += cuotas_texto
                     
                     if datos_dict.get("fase"):
                         datos_texto += f"Fase: {datos_dict.get('fase')}\n"
@@ -256,7 +345,9 @@ class PicksGeneratorService:
                         for b in bajas:
                             datos_texto += f"  - {b.get('jugador')} ({b.get('equipo')}) - Motivo: {b.get('razon')} [{b.get('tipo')}]\n"
                 else:
-                    datos_texto += f"Partido: {datos_dict.get('partido_solicitado')}\nNota: {datos_dict.get('nota')}\n"
+                    datos_texto += f"Partido: {local} vs. {visitante}\n"
+                    datos_texto += cuotas_texto
+                    datos_texto += f"Nota: {datos_dict.get('nota')}\n"
 
             # 4. Prompt estructurado para forzar al LLM a retornar JSON estricto basándose en la guía de J. Carreño
             prompt_maestro = (
@@ -265,9 +356,15 @@ class PicksGeneratorService:
                 "Dada la siguiente lista de partidos y sus estadísticas de hoy, debes generar exactamente dos combinadas (parleys):\n\n"
                 f"{datos_texto}\n"
                 "INSTRUCCIONES DE SELECCIÓN (FILOSOFÍA SPRO J. CARREÑO):\n"
-                "1. 'parley_seguro' (Combinada Segura): Riesgo bajo. Selecciona estrictamente entre 2 and 3 eventos (la Regla SPRO prohíbe combinadas de 4 o más eventos debido al margen acumulado de la casa). Elige cuotas individuales bajas (entre 1.10 y 1.40) con alta probabilidad real (ej: doble oportunidad, hándicaps a favor o Draw No Bet/sin empate).\n"
-                "2. 'parley_arriesgado' (Combinada de Alto Valor): Riesgo alto pero con ventaja matemática clara (esperanza = cuota * prob > 1). Selecciona estrictamente entre 2 y 3 eventos con cuotas individuales moderadas (entre 1.50 y 2.50), priorizando hándicaps asiáticos para mitigar el riesgo.\n"
+                "1. 'parley_seguro' (Combinada Segura): Riesgo bajo. Selecciona entre 1 y 3 eventos (preferiblemente 2, pero si hay pocos partidos programados, 1 evento es aceptable). Elige cuotas individuales bajas (entre 1.10 y 1.40) con alta probabilidad real (ej: doble oportunidad, hándicaps a favor o Draw No Bet/sin empate).\n"
+                "2. 'parley_arriesgado' (Combinada de Alto Valor): Riesgo alto pero con ventaja matemática clara (esperanza = cuota * prob > 1). Selecciona entre 1 y 3 eventos (preferiblemente 2, pero si hay pocos partidos programados, 1 evento es aceptable) con cuotas individuales moderadas (entre 1.50 y 2.50), priorizando hándicaps asiáticos para mitigar el riesgo.\n"
                 "3. Todas las selecciones individuales que definas deben poseer valor real (Value+) y cuotas verosímiles de casas de apuestas.\n\n"
+                "!!! REGLAS DE OBLIGATORIO CUMPLIMIENTO (CRÍTICAS) !!!\n"
+                "1. Solo puedes pronosticar partidos que estén en la lista de arriba. Está terminantemente prohibido inventar partidos o usar placeholders como 'X vs Y', 'Fórmula roja vs Azul', 'Nombre Local vs. Nombre Visitante' o cualquier otro.\n"
+                "2. El campo 'partido' en el JSON resultante debe ser exactamente el nombre de uno de los partidos proporcionados en la lista de arriba.\n"
+                "3. El campo 'pronostico' debe ser una recomendación real y concreta de mercado (ej: 'DNB Francia', 'Francia +0.5 Hándicap Asiático', 'Doble Oportunidad Francia o Empate'). No escribas explicaciones genéricas ni descripciones de texto en el campo 'pronostico'.\n"
+                "4. El campo 'cuota' debe ser un número float (ej. 1.35), nunca un texto o una frase.\n"
+                "5. El campo 'probabilidad_estadistica' debe ser un string con un porcentaje (ej. '85%').\n\n"
                 "Debes retornar ÚNICAMENTE un formato JSON limpio y sin bloques de código markdown (sin ```json), sin explicaciones de texto, respetando exactamente el siguiente esquema:\n"
                 "{\n"
                 "  \"parley_seguro\": {\n"
@@ -277,7 +374,7 @@ class PicksGeneratorService:
                 "    \"selecciones\": [\n"
                 "      {\n"
                 "        \"partido\": \"Nombre Local vs. Nombre Visitante\",\n"
-                "        \"pronostico\": \"Pronóstico Sugerido (Ej: Local o Empate o DNB)\",\n"
+                "        \"pronostico\": \"DNB Favorito (o similar)\",\n"
                 "        \"cuota\": 1.25,\n"
                 "        \"probabilidad_estadistica\": \"80%\"\n"
                 "      }\n"
@@ -290,7 +387,7 @@ class PicksGeneratorService:
                 "    \"selecciones\": [\n"
                 "      {\n"
                 "        \"partido\": \"Nombre Local vs. Nombre Visitante\",\n"
-                "        \"pronostico\": \"Pronóstico (Ej: Hándicap Asiático +0.5 / DNB)\",\n"
+                "        \"pronostico\": \"Hándicap Asiático +0.5 (o similar)\",\n"
                 "        \"cuota\": 1.90,\n"
                 "        \"probabilidad_estadistica\": \"60%\"\n"
                 "      }\n"
@@ -299,41 +396,99 @@ class PicksGeneratorService:
                 "}"
             )
 
-            # 5. Llamada al LLM y limpieza
-            json_str = self.llm.analizar_partido(prompt_maestro)
-            json_str = json_str.replace("```json", "").replace("```", "").strip()
+            # 5. Llamada al LLM con reintentos y validación estricta de partidos reales
+            picks_data = None
+            json_str = ""
+            intentos = 3
             
-            try:
-                picks_data = json.loads(json_str)
-            except Exception as e:
-                print(f"❌ PicksGeneratorService: Error al parsear JSON del LLM: {e}")
-                print("Bloque recibido del LLM:")
-                print(json_str)
-                err_msg = "La Inteligencia Artificial no devolvió un JSON en el formato requerido. Intenta de nuevo."
+            for intento in range(intentos):
+                print(f"🧠 PicksGeneratorService: Llamando al LLM (Intento {intento+1} de {intentos})...")
+                json_str = self.llm.analizar_partido(prompt_maestro)
+                json_str = json_str.replace("```json", "").replace("```", "").strip()
+                
+                try:
+                    parsed_data = json.loads(json_str)
+                    
+                    # Normalizar claves si fueron desinfectadas
+                    for old_key in list(parsed_data.keys()):
+                        key_lower = old_key.lower()
+                        if "segur" in key_lower:
+                            parsed_data["parley_seguro"] = parsed_data[old_key]
+                        elif any(x in key_lower for x in ["arriesga", "alto_valor", "valor"]):
+                            parsed_data["parley_arriesgado"] = parsed_data[old_key]
+                    
+                    # Validar partidos y estructura
+                    valid_generation = True
+                    for key in ["parley_seguro", "parley_arriesgado"]:
+                        parley = parsed_data.get(key)
+                        if not parley or not parley.get("selecciones"):
+                            print(f"⚠️ PicksGeneratorService: Faltan selecciones para {key}")
+                            valid_generation = False
+                            break
+                        
+                        for sel in parley["selecciones"]:
+                            # Validar que no contenga placeholders o nombres genéricos
+                            partido_propuesto = sel.get("partido", "")
+                            if any(ph in partido_propuesto.lower() for ph in ["nombre local", "x vs y", "formula roja", "evento a", "nombre visitante"]):
+                                print(f"⚠️ PicksGeneratorService: Se detectó placeholder en partido: '{partido_propuesto}'")
+                                valid_generation = False
+                                break
+                            
+                            # Buscar coincidencia con partidos de la lista de hoy
+                            partido_real = self.encontrar_partido_correspondiente(partido_propuesto, partidos)
+                            if not partido_real:
+                                print(f"⚠️ PicksGeneratorService: Partido '{partido_propuesto}' no coincide con ningún partido real de hoy {partidos}")
+                                valid_generation = False
+                                break
+                            else:
+                                # Forzar el nombre exacto de la lista de hoy para evitar inconsistencias
+                                sel["partido"] = partido_real
+                            
+                            # Validar cuota numérica
+                            try:
+                                cuota = float(sel.get("cuota", 0))
+                                if cuota <= 1.0:
+                                    print(f"⚠️ PicksGeneratorService: Cuota inválida: {cuota}")
+                                    valid_generation = False
+                                    break
+                            except (ValueError, TypeError):
+                                print(f"⚠️ PicksGeneratorService: No se pudo convertir cuota a float: {sel.get('cuota')}")
+                                valid_generation = False
+                                break
+                                
+                            # Validar probabilidad numérica
+                            try:
+                                prob_str = str(sel.get("probabilidad_estadistica", "70%")).replace("%", "").strip()
+                                float(prob_str)
+                            except (ValueError, TypeError):
+                                print(f"⚠️ PicksGeneratorService: Probabilidad inválida: {sel.get('probabilidad_estadistica')}")
+                                valid_generation = False
+                                break
+                        
+                        if not valid_generation:
+                            break
+                            
+                    if valid_generation:
+                        picks_data = parsed_data
+                        print("✅ PicksGeneratorService: Generación validada correctamente!")
+                        break
+                    else:
+                        print("⚠️ PicksGeneratorService: Los datos generados no pasaron los filtros de validación.")
+                except Exception as e:
+                    print(f"⚠️ PicksGeneratorService: Excepción al parsear/validar JSON del LLM: {e}")
+                    print("JSON recibido:")
+                    print(json_str[:1000])
+                    
+            if not picks_data:
+                err_msg = "La IA no devolvió picks válidos para los partidos reales de hoy tras 3 intentos."
                 run_async(actualizar_log_fallo(err_msg, prompt_maestro))
                 return False, err_msg
 
             # 6. Completar métricas matemáticas e inyectar campos calculados
             fecha_hoy = datetime.date.today().strftime("%Y-%m-%d")
-            
-            # Normalizar claves si fueron desinfectadas por el filtro de seguridad de LLMService o tienen variaciones
-            for old_key in list(picks_data.keys()):
-                key_lower = old_key.lower()
-                if "segur" in key_lower:
-                    picks_data["parley_seguro"] = picks_data[old_key]
-                elif any(x in key_lower for x in ["arriesga", "alto_valor", "valor"]):
-                    picks_data["parley_arriesgado"] = picks_data[old_key]
 
             for key in ["parley_seguro", "parley_arriesgado"]:
-                parley = picks_data.get(key)
-                if not parley or not parley.get("selecciones"):
-                    print(f"❌ PicksGeneratorService: Validación fallida para {key}.")
-                    print("JSON completo recibido:")
-                    print(json.dumps(picks_data, indent=2, ensure_ascii=False))
-                    err_msg = f"Faltan selecciones en la sección {key}."
-                    run_async(actualizar_log_fallo(err_msg, prompt_maestro))
-                    return False, err_msg
-                
+                parley = picks_data[key]
                 cuota_total = 1.0
                 prob_comb = 1.0
                 
