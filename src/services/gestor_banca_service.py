@@ -750,7 +750,10 @@ class GestorBancaService:
                 home_team = match.get("home_team_name_en", "")
                 away_team = match.get("away_team_name_en", "")
                 
-                if coinciden_equipos(home_p, home_team) and coinciden_equipos(away_p, away_team):
+                es_orden_normal = coinciden_equipos(home_p, home_team) and coinciden_equipos(away_p, away_team)
+                es_orden_invertido = coinciden_equipos(home_p, away_team) and coinciden_equipos(away_p, home_team)
+                
+                if es_orden_normal or es_orden_invertido:
                     encontrado = True
                     finished = match.get("finished", "").upper() == "TRUE" or match.get("time_elapsed", "").lower() == "finished"
                     
@@ -761,8 +764,13 @@ class GestorBancaService:
                                 kickoff = datetime.datetime.strptime(dt_str, "%m/%d/%Y %H:%M")
                                 now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
                                 if now_utc >= kickoff + datetime.timedelta(minutes=125):
-                                    g_home = match.get("home_score")
-                                    g_away = match.get("away_score")
+                                    if es_orden_normal:
+                                        g_home = match.get("home_score")
+                                        g_away = match.get("away_score")
+                                    else:
+                                        g_home = match.get("away_score")
+                                        g_away = match.get("home_score")
+                                        
                                     if g_home is not None and g_away is not None:
                                         resultados_a_aplicar[partido_p] = (int(g_home), int(g_away))
                                         print(f"🎯 [AutoEvaluador 2026] Partido '{partido_p}' apto para liquidación automática ({g_home}-{g_away}).")
@@ -776,7 +784,10 @@ class GestorBancaService:
                     home_team = match.get("home_team", {}).get("name", "")
                     away_team = match.get("away_team", {}).get("name", "")
                     
-                    if coinciden_equipos(home_p, home_team) and coinciden_equipos(away_p, away_team):
+                    es_orden_normal = coinciden_equipos(home_p, home_team) and coinciden_equipos(away_p, away_team)
+                    es_orden_invertido = coinciden_equipos(home_p, away_team) and coinciden_equipos(away_p, home_team)
+                    
+                    if es_orden_normal or es_orden_invertido:
                         status = match.get("status", "")
                         finalizado = status.lower() in ["completed", "final", "finished"]
                         
@@ -786,8 +797,13 @@ class GestorBancaService:
                                 try:
                                     kickoff = datetime.datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
                                     if now >= kickoff + datetime.timedelta(minutes=125):
-                                        g_home = match.get("home_team", {}).get("goals")
-                                        g_away = match.get("away_team", {}).get("goals")
+                                        if es_orden_normal:
+                                            g_home = match.get("home_team", {}).get("goals")
+                                            g_away = match.get("away_team", {}).get("goals")
+                                        else:
+                                            g_home = match.get("away_team", {}).get("goals")
+                                            g_away = match.get("home_team", {}).get("goals")
+                                            
                                         if g_home is not None and g_away is not None:
                                             resultados_a_aplicar[partido_p] = (int(g_home), int(g_away))
                                             print(f"🎯 [AutoEvaluador 2022] Partido '{partido_p}' apto para liquidación automática ({g_home}-{g_away}).")

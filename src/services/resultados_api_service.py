@@ -92,6 +92,8 @@ def normalizar_equipo(nombre):
         "canada": "canada",
         "brasil": "brazil",
         "brazil": "brazil",
+        "egipto": "egypt",
+        "egypt": "egypt",
     }
     
     return traducciones.get(nombre_norm, nombre_norm)
@@ -133,12 +135,21 @@ class ResultadosAPIService:
                 home_team = match.get("home_team_name_en", "")
                 away_team = match.get("away_team_name_en", "")
                 
+                # Caso 1: Orden normal
                 if coinciden_equipos(equipo_local, home_team) and coinciden_equipos(equipo_visitante, away_team):
-                    
                     finished = match.get("finished", "").upper() == "TRUE" or match.get("time_elapsed", "").lower() == "finished"
                     goles_local = match.get("home_score")
                     goles_visitante = match.get("away_score")
-                    
+                    if goles_local is not None and goles_visitante is not None:
+                        try:
+                            return int(goles_local), int(goles_visitante), finished
+                        except ValueError:
+                            pass
+                # Caso 2: Orden invertido (swapped)
+                elif coinciden_equipos(equipo_local, away_team) and coinciden_equipos(equipo_visitante, home_team):
+                    finished = match.get("finished", "").upper() == "TRUE" or match.get("time_elapsed", "").lower() == "finished"
+                    goles_local = match.get("away_score")
+                    goles_visitante = match.get("home_score")
                     if goles_local is not None and goles_visitante is not None:
                         try:
                             return int(goles_local), int(goles_visitante), finished
@@ -160,13 +171,19 @@ class ResultadosAPIService:
                 home_team = match.get("home_team", {}).get("name", "")
                 away_team = match.get("away_team", {}).get("name", "")
                 
+                # Caso 1: Orden normal
                 if coinciden_equipos(equipo_local, home_team) and coinciden_equipos(equipo_visitante, away_team):
-                    
                     status = match.get("status", "")
                     finalizado = status.lower() in ["completed", "final", "finished"]
                     goles_local = match.get("home_team", {}).get("goals")
                     goles_visitante = match.get("away_team", {}).get("goals")
-                    
+                    return goles_local, goles_visitante, finalizado
+                # Caso 2: Orden invertido (swapped)
+                elif coinciden_equipos(equipo_local, away_team) and coinciden_equipos(equipo_visitante, home_team):
+                    status = match.get("status", "")
+                    finalizado = status.lower() in ["completed", "final", "finished"]
+                    goles_local = match.get("away_team", {}).get("goals")
+                    goles_visitante = match.get("home_team", {}).get("goals")
                     return goles_local, goles_visitante, finalizado
         except Exception as e:
             print(f"⚠️ Error al conectar con la API de 2022 (worldcupjson): {e}")
