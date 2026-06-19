@@ -7,13 +7,14 @@ arranca el scheduler de picks diario, y lanza el bucle de polling infinito.
 
 import sys
 import os
-import telebot
-import src.config.encoding  # noqa: F401 — Centraliza reconfigure de stdout/stderr UTF-8
 
 # Agregar directorio raíz al PYTHONPATH para importaciones limpias
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
+
+import telebot
+import src.config.encoding  # noqa: F401 — Centraliza reconfigure de stdout/stderr UTF-8
 
 from src.config.settings import Settings
 from src.controllers.telegram_controller import TelegramController
