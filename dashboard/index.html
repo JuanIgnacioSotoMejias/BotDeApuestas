@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="🏆 Reto de Banca Mundial 2026 - Control y seguimiento de banca e inversiones con predicciones avanzadas generadas por Inteligencia Artificial de forma cuantitativa.">
+    <meta name="robots" content="index, follow">
     <title>🏆 Reto de Banca Mundial 2026 - $10 to $100</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="index.css">
@@ -14,49 +16,64 @@
         <!-- HEADER -->
         <header class="dashboard-header">
             <div class="logo-area">
-                <span class="logo-emoji">🏆</span>
+                <svg class="logo-svg" viewBox="0 0 24 24" width="38" height="38" fill="url(#gold-grad)" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.45));">
+                    <defs>
+                        <linearGradient id="gold-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#fbbf24"/>
+                            <stop offset="100%" stop-color="#f59e0b"/>
+                        </linearGradient>
+                    </defs>
+                    <path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v3c0 2.2 1.8 4 4 4h1.7c.8 1.8 2.5 3.1 4.5 3.4V19H9v2h6v-2h-4.2v-1.6c2-.3 3.7-1.6 4.5-3.4H17c2.2 0 4-1.8 4-4V7c0-1.1-.9-2-2-2zm-12 5c-1.1 0-2-.9-2-2V7h2v3zm10 0V7h2v3c0 1.1-.9 2-2 2z"/>
+                </svg>
                 <div>
                     <h1>Reto de Banca Mundial 2026</h1>
                     <p class="subtitle">Analista Deportivo & Científico de Datos Avanzado</p>
                 </div>
             </div>
-            <div class="target-badge">
-                <span class="badge-label">Objetivo</span>
-                <span class="badge-value">$10 ➔ $100 USD</span>
+            <div class="header-controls" style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+                <!-- Selector de Cuotas -->
+                <div class="odds-toggle-wrapper" id="odds-toggle-group">
+                    <button id="toggle-odds-dec" class="btn-toggle-odds active" data-format="decimal">Decimal</button>
+                    <button id="toggle-odds-ame" class="btn-toggle-odds" data-format="american">Americana</button>
+                </div>
+                <div class="target-badge">
+                    <span class="badge-label">Objetivo</span>
+                    <span class="badge-value">$10 ➔ $100 USD</span>
+                </div>
             </div>
         </header>
 
         <!-- STATS GRID -->
         <section class="stats-grid">
-            <div class="stat-card">
+            <div class="stat-card" id="card-banca-inicial">
                 <div class="stat-icon">💵</div>
                 <div class="stat-info">
                     <span class="stat-label">Banca Inicial</span>
                     <span class="stat-value" id="banca-inicial">$10.00</span>
                 </div>
             </div>
-            <div class="stat-card accent-green">
+            <div class="stat-card accent-green" id="card-banca-disponible">
                 <div class="stat-icon">💰</div>
                 <div class="stat-info">
                     <span class="stat-label">Banca Disponible</span>
                     <span class="stat-value" id="banca-disponible">$8.00</span>
                 </div>
             </div>
-            <div class="stat-card accent-blue">
+            <div class="stat-card accent-blue" id="card-dinero-juego">
                 <div class="stat-icon">🔥</div>
                 <div class="stat-info">
                     <span class="stat-label">Dinero en Juego</span>
                     <span class="stat-value" id="dinero-juego">$2.00</span>
                 </div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" id="card-yield">
                 <div class="stat-icon">📈</div>
                 <div class="stat-info">
                     <span class="stat-label">Yield Acumulado</span>
                     <span class="stat-value" id="yield-stats">0.0%</span>
                 </div>
             </div>
-            <div class="stat-card highlight">
+            <div class="stat-card highlight" id="card-roi">
                 <div class="stat-icon">🎯</div>
                 <div class="stat-info">
                     <span class="stat-label">ROI Actual</span>
@@ -66,12 +83,12 @@
         </section>
 
         <!-- TABS NAVIGATION -->
-        <div class="tabs-navigation">
+        <nav class="tabs-navigation" aria-label="Navegación del Dashboard">
             <button id="tab-btn-visual" class="tab-button active">📈 Panel Visual</button>
             <button id="tab-btn-parleys" class="tab-button">🎟️ Historial de Parleys</button>
             <button id="tab-btn-predictions" class="tab-button">🤖 Predicciones IA</button>
             <button id="tab-btn-admin" class="tab-button">⚙️ Consola Admin</button>
-        </div>
+        </nav>
 
         <!-- MAIN CONTENT AREA (VISUAL PANEL) -->
         <main id="visual-panel" class="dashboard-main">
@@ -105,7 +122,7 @@
                 </div>
             </div>
 
-            <!-- RIGHT COLUMN: BANK ADJUSTMENT & HISTORICAL LIST -->
+            <!-- RIGHT COLUMN: BANK ADJUSTMENT, SIMULATOR & HISTORICAL LIST -->
             <div class="main-column side-column">
                 <!-- BANK ADJUSTMENT PANEL -->
                 <div class="panel-card bank-adjust-card">
@@ -130,6 +147,26 @@
                     </form>
                 </div>
 
+                <!-- PROJECTION SIMULATOR PANEL -->
+                <div class="panel-card simulator-card" id="card-simulator">
+                    <h2>🎯 Simulador de Proyección</h2>
+                    <div style="margin-bottom: 15px;">
+                        <p style="color: var(--text-secondary); font-size: 0.8rem; line-height: 1.45;">Calcula la curva teórica hacia los <b>$100 USD</b> ingresando tu rendimiento promedio esperado (Yield) y el número de jugadas.</p>
+                    </div>
+                    <div class="form-row-inline" style="grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                        <div class="form-group">
+                            <label for="sim-yield">Yield (%)</label>
+                            <input type="number" id="sim-yield" value="15" min="-50" max="200" step="1" style="padding: 8px 12px; font-size: 0.85rem;">
+                        </div>
+                        <div class="form-group">
+                            <label for="sim-tickets">Parleys</label>
+                            <input type="number" id="sim-tickets" value="15" min="1" max="100" step="1" style="padding: 8px 12px; font-size: 0.85rem;">
+                        </div>
+                    </div>
+                    <button id="btn-simular" class="btn-secondary" style="width: 100%; font-size: 0.85rem; padding: 10px;">📊 Simular Trayectoria</button>
+                </div>
+
+                <!-- SETTLED PANEL -->
                 <div class="panel-card settled-panel">
                     <h2>🎫 Tickets Asentados y Resultados</h2>
                     <div id="settled-tickets-container" class="settled-list">
@@ -174,10 +211,33 @@
         <main id="predictions-panel" class="dashboard-main" style="display: none;">
             <div class="main-column" style="grid-column: 1 / -1;">
                 <div class="panel-card">
-                    <h2>🤖 Historial de Predicciones de la Inteligencia Artificial</h2>
+                    <h2>🤖 Historial de Predicciones de la IA</h2>
                     <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;">
                         Registro histórico completo de todos los pronósticos y parleys propuestos por la IA. Estos datos se utilizan para el entrenamiento continuo de los agentes.
                     </p>
+
+                    <!-- Filtros y Buscador de Predicciones -->
+                    <div class="predictions-filter-bar" style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
+                        <div class="form-group" style="flex: 1; min-width: 250px;">
+                            <input type="text" id="search-prediccion" placeholder="🔎 Buscar por equipo, partido o pronóstico..." style="width: 100%; padding: 10px 16px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--card-border); border-radius: 10px; color: var(--text-primary); outline: none;">
+                        </div>
+                        <div class="form-group" style="width: 180px;">
+                            <select id="filter-prediccion-estado" style="width: 100%; padding: 10.5px 16px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--card-border); border-radius: 10px; color: var(--text-primary); outline: none;">
+                                <option value="all">Todos los Estados</option>
+                                <option value="Ganado">Ganado</option>
+                                <option value="Perdido">Perdido</option>
+                                <option value="Pendiente">Pendiente</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="width: 180px;">
+                            <select id="filter-prediccion-tipo" style="width: 100%; padding: 10.5px 16px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--card-border); border-radius: 10px; color: var(--text-primary); outline: none;">
+                                <option value="all">Todos los Tipos</option>
+                                <option value="segura">Combinada Segura</option>
+                                <option value="alto valor">Alto Valor</option>
+                            </select>
+                        </div>
+                    </div>
+
                     <div class="table-responsive" style="overflow-x: auto;">
                         <table class="predictions-table" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem;">
                             <thead>
@@ -282,7 +342,40 @@
                     <button type="button" id="btn-limpiar-predicciones" class="btn-primary" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); border: none; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3); width: 100%; font-size: 0.9rem;">🧹 Borrar Predicciones de IA</button>
                 </div>
             </div>
+
+            <!-- AUDIT LOGS EXPANDABLE ACCORDION (FULL WIDTH) -->
+            <div class="panel-card admin-logs-card" style="grid-column: 1 / -1; margin-top: 20px;" id="card-admin-logs">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-left: 3px solid var(--accent-purple); padding-left: 10px;">
+                    <h2 style="border-left: none; padding-left: 0; margin-bottom: 0;">📋 Registro de Auditoría de IA (Logs de Ejecución)</h2>
+                    <button type="button" id="btn-refrescar-logs" class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem;">🔄 Recargar Logs</button>
+                </div>
+                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 15px;">
+                    Audita las últimas ejecuciones automáticas de la IA, visualiza los prompts utilizados y los resultados crudos devueltos en formato JSON por los agentes.
+                </p>
+                <div id="admin-logs-container" class="logs-accordion-list">
+                    <p class="loading-text">Cargando logs de auditoría...</p>
+                </div>
+            </div>
         </main>
+    </div>
+
+    <!-- Contenedores de UI Dinámicos (Toasts & Modales) -->
+    <div id="toast-container" class="toast-container" aria-live="polite"></div>
+    
+    <div id="custom-modal" class="modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 id="modal-title">Confirmación</h3>
+                <button id="modal-close-btn" class="modal-close" aria-label="Cerrar modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="modal-message">¿Estás seguro de realizar esta acción?</p>
+            </div>
+            <div class="modal-footer">
+                <button id="modal-btn-cancel" class="btn-secondary">Cancelar</button>
+                <button id="modal-btn-confirm" class="btn-primary">Confirmar</button>
+            </div>
+        </div>
     </div>
 
     <!-- Scripts -->

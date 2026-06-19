@@ -13,12 +13,15 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from src.commands.start import StartCommand
 from src.commands.analisis import AnalisisCommand
 from src.services.gestor_banca_service import GestorBancaService
+from src.services.telegram_service import escape_html
 
 from src.config.settings import Settings
 
 class TelegramController:
-    def __init__(self, bot):
+    def __init__(self, bot, scheduler=None):
         self.bot = bot
+        self.scheduler = scheduler
+        self._inicio = datetime.datetime.now()
         self.commands = {
             "start": StartCommand(),
             "analisis": AnalisisCommand()
@@ -50,7 +53,8 @@ class TelegramController:
             comandos_admin = comandos_publicos + [
                 BotCommand("admin", "Panel para liquidar apuestas"),
                 BotCommand("crear_picks", "Registrar picks manualmente"),
-                BotCommand("generar_picks", "Generar picks con agentes IA")
+                BotCommand("generar_picks", "Generar picks con agentes IA"),
+                BotCommand("status", "Estado del bot y scheduler")
             ]
             for admin_id in Settings.TELEGRAM_ADMIN_IDS:
                 try:
@@ -87,6 +91,52 @@ class TelegramController:
             print(f"🎛️ TelegramController: Comando /liquidar recibido de chat_id={chat_id}")
             self.enviar_botonera_liquidar(chat_id)
 
+        # --- COMANDO /STATUS (HEALTH CHECK) ---
+        @self.bot.message_handler(commands=["status"])
+        def handle_status(message):
+            chat_id = message.chat.id
+            if not self._es_admin(chat_id):
+                self.bot.send_message(chat_id, "⚠️ Este comando es de acceso exclusivo para administradores.")
+                return
+            print(f"🎛️ TelegramController: Comando /status recibido de chat_id={chat_id}")
+            
+            # Calcular uptime del bot
+            delta = datetime.datetime.now() - self._inicio
+            horas, resto = divmod(int(delta.total_seconds()), 3600)
+            minutos, segundos = divmod(resto, 60)
+            if horas >= 24:
+                dias = horas // 24
+                horas_r = horas % 24
+                uptime_str = f"{dias}d {horas_r}h {minutos}m"
+            else:
+                uptime_str = f"{horas}h {minutos}m {segundos}s"
+            
+            msg = (
+                "🤖 <b>Estado del Sistema</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"✅ Bot: <b>Activo</b>\n"
+                f"⏱ Uptime: <code>{uptime_str}</code>\n\n"
+            )
+            
+            if self.scheduler:
+                estado = self.scheduler.obtener_estado()
+                sched_emoji = "✅" if estado['en_ejecucion'] else "⏸"
+                msg += (
+                    f"⏰ <b>Scheduler de Picks</b>\n"
+                    f"  {sched_emoji} Estado: <b>{'Activo' if estado['en_ejecucion'] else 'Detenido'}</b>\n"
+                    f"  🕐 Hora programada: <code>{estado['hora_programada']}</code>\n"
+                    f"  ⏭ Próxima ejecución: <code>{estado['proxima_ejecucion']}</code>\n"
+                    f"  📤 Último envío: <code>{estado['ultimo_envio_exitoso']}</code>\n"
+                    f"  📊 Ejecuciones: <code>{estado['ejecuciones_completadas']}</code>\n"
+                )
+                if estado['ultimo_error'] != "Ninguno":
+                    msg += f"  ⚠️ Último error: <code>{escape_html(estado['ultimo_error'][:100])}</code>\n"
+            else:
+                msg += "⏰ Scheduler: <b>No inicializado</b>\n"
+            
+            msg += "\n━━━━━━━━━━━━━━━━━━━━━━━━━"
+            self.bot.send_message(chat_id, msg, parse_mode="HTML")
+
         # --- CREADOR DE PICKS CONVERSACIONAL ---
         @self.bot.message_handler(commands=["crear_picks"])
         def handle_crear_picks(message):
@@ -122,13 +172,13 @@ class TelegramController:
             }
             
             msg = (
-                "📅 *Creador de Picks Conversacional*\n"
+                "📅 <b>Creador de Picks Conversacional</b>\n"
                 "━━━━━━━━━━━━━━━━━━━━━\n\n"
-                "Por favor, ingresa la fecha para esta jornada de apuestas en formato `AAAA-MM-DD` "
-                "(Ejemplo: `2026-06-15`).\n\n"
-                "_(Responde con la palabra 'hoy' para auto-configurar la fecha del servidor)_"
+                "Por favor, ingresa la fecha para esta jornada de apuestas en formato <code>AAAA-MM-DD</code> "
+                "(Ejemplo: <code>2026-06-15</code>).\n\n"
+                "<i>(Responde con la palabra 'hoy' para auto-configurar la fecha del servidor)</i>"
             )
-            sent_msg = self.bot.send_message(chat_id, msg, parse_mode="Markdown")
+            sent_msg = self.bot.send_message(chat_id, msg, parse_mode="HTML")
             self.bot.register_next_step_handler(sent_msg, self._step_fecha)
 
         # --- COMANDOS PÚBLICOS PARA AMIGOS (Fase 1/2) ---
@@ -146,27 +196,26 @@ class TelegramController:
             s = datos.get("estadisticas_globales", {})
             
             reporte = (
-                "🏆 *Reto de Banca Mundial 2026*\n"
+                "🏆 <b>Reto de Banca Mundial 2026</b>\n"
                 "━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"💵 *Banca Inicial:* `${b.get('banca_inicial', 10.0):.2f} USD`\n"
-                f"💰 *Banca Disponible:* `${b.get('banca_actual', 10.0):.2f} USD`\n"
-                f"🔥 *Dinero en Juego:* `${b.get('dinero_en_juego', 0.0):.2f} USD`\n\n"
-                f"📈 *Yield Acumulado:* `{s.get('rendimiento_yield', '0.0%')}`\n"
-                f"🎯 *ROI Actual:* `{s.get('roi', '0.0%')}`\n"
-                f"📊 *Efectividad:* {s.get('apuestas_ganadas', 0)} ✅ | {s.get('apuestas_perdidas', 0)} ❌ | {s.get('apuestas_anuladas', 0)} 🔄\n\n"
-                f"💡 _Nota: Este balance es público y compartido con mis amigos del reto._"
+                f"💵 <b>Banca Inicial:</b> <code>${b.get('banca_inicial', 10.0):.2f} USD</code>\n"
+                f"💰 <b>Banca Disponible:</b> <code>${b.get('banca_actual', 10.0):.2f} USD</code>\n"
+                f"🔥 <b>Dinero en Juego:</b> <code>${b.get('dinero_en_juego', 0.0):.2f} USD</code>\n\n"
+                f"📈 <b>Yield Acumulado:</b> <code>{s.get('rendimiento_yield', '0.0%')}</code>\n"
+                f"🎯 <b>ROI Actual:</b> <code>{s.get('roi', '0.0%')}</code>\n"
+                f"📊 <b>Efectividad:</b> {s.get('apuestas_ganadas', 0)} ✅ | {s.get('apuestas_perdidas', 0)} ❌ | {s.get('apuestas_anuladas', 0)} 🔄\n\n"
+                f"💡 <i>Nota: Este balance es público y compartido con mis amigos del reto.</i>"
             )
-            self.bot.send_message(chat_id, reporte, parse_mode="Markdown")
+            self.bot.send_message(chat_id, reporte, parse_mode="HTML")
 
         @self.bot.message_handler(commands=["picks"])
         def handle_picks(message):
             chat_id = message.chat.id
             print(f"🎛️ TelegramController: Comando /picks recibido de chat_id={chat_id}")
             
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            JUGADAS_PATH = os.path.join(base_dir, "jugadas_lunes_15.json")
+            JUGADAS_PATH = Settings.jugadas_path_mas_reciente()
             
-            if not os.path.exists(JUGADAS_PATH):
+            if not JUGADAS_PATH or not os.path.exists(JUGADAS_PATH):
                 # Fallback: Cargar directamente desde la Base de Datos persistente
                 try:
                     banca_srv = GestorBancaService()
@@ -174,29 +223,29 @@ class TelegramController:
                     activas = datos.get("apuestas_activas", []) if datos else []
                     
                     if not activas:
-                        self.bot.send_message(chat_id, "💡 *No hay picks oficiales registrados para la jornada de hoy todavía.*", parse_mode="Markdown")
+                        self.bot.send_message(chat_id, "💡 <b>No hay picks oficiales registrados para la jornada de hoy todavía.</b>", parse_mode="HTML")
                         return
                         
                     fecha_hoy = datetime.date.today().strftime("%Y-%m-%d")
                     reporte = (
-                        f"📅 *Combinadas Oficiales (Cargadas de BD):* `{fecha_hoy}`\n"
+                        f"📅 <b>Combinadas Oficiales (Cargadas de BD):</b> <code>{fecha_hoy}</code>\n"
                         "━━━━━━━━━━━━━━━━━━━━━\n\n"
                     )
                     for tkt in activas:
-                        nombre = tkt.get("tipo_parley", "Combinada")
+                        nombre = escape_html(tkt.get("tipo_parley", "Combinada"))
                         cuota = tkt.get("cuota", 1.0)
                         inversion = tkt.get("inversion", 1.0)
                         
-                        reporte += f"🔥 *{nombre.upper()}* (Cuota: *@{cuota:.2f}* | Inversión: `${inversion:.2f} USD`)\n"
+                        reporte += f"🔥 <b>{nombre.upper()}</b> (Cuota: <b>@{cuota:.2f}</b> | Inversión: <code>${inversion:.2f} USD</code>)\n"
                         for sel in tkt.get("selecciones", []):
-                            reporte += f"  • _{sel.get('partido')}_ — *{sel.get('pronostico')}* (@{sel.get('cuota')})\n"
+                            reporte += f"  • <i>{escape_html(sel.get('partido', ''))}</i> — <b>{escape_html(sel.get('pronostico', ''))}</b> (@{sel.get('cuota')})\n"
                         reporte += "\n"
                         
-                    self.bot.send_message(chat_id, reporte, parse_mode="Markdown")
+                    self.bot.send_message(chat_id, reporte, parse_mode="HTML")
                     return
                 except Exception as e_db:
                     print(f"Error cargando picks desde BD: {e_db}")
-                    self.bot.send_message(chat_id, "💡 *No hay picks oficiales registrados para la jornada de hoy todavía.*", parse_mode="Markdown")
+                    self.bot.send_message(chat_id, "💡 <b>No hay picks oficiales registrados para la jornada de hoy todavía.</b>", parse_mode="HTML")
                     return
                 
             try:
@@ -208,24 +257,24 @@ class TelegramController:
                 parleys = datos.get("parleys", {})
                 
                 reporte = (
-                    f"📅 *Combinadas Oficiales:* `{fecha}`\n"
-                    f"📝 *Detalle:* _{desc}_\n"
+                    f"📅 <b>Combinadas Oficiales:</b> <code>{escape_html(fecha)}</code>\n"
+                    f"📝 <b>Detalle:</b> <i>{escape_html(desc)}</i>\n"
                     "━━━━━━━━━━━━━━━━━━━━━\n\n"
                 )
                 
                 for p_key, p_val in parleys.items():
-                    nombre = p_val.get("nombre", p_key)
+                    nombre = escape_html(p_val.get("nombre", p_key))
                     cuota = p_val.get("cuota_total_estimada", 1.0)
                     stake = p_val.get("stake_sugerido", "1/10")
                     prob = p_val.get("probabilidad_estadistica_combinada", "N/A")
                     
-                    reporte += f"🔥 *{nombre.upper()}* (Cuota: *@{cuota:.2f}* | Stake: `{stake}`)\n"
-                    reporte += f"📈 Probabilidad IA: `{prob}`\n"
+                    reporte += f"🔥 <b>{nombre.upper()}</b> (Cuota: <b>@{cuota:.2f}</b> | Stake: <code>{stake}</code>)\n"
+                    reporte += f"📈 Probabilidad IA: <code>{prob}</code>\n"
                     for sel in p_val.get("selecciones", []):
-                        reporte += f"  • _{sel.get('partido')}_ — *{sel.get('pronostico')}* (@{sel.get('cuota')})\n"
+                        reporte += f"  • <i>{escape_html(sel.get('partido', ''))}</i> — <b>{escape_html(sel.get('pronostico', ''))}</b> (@{sel.get('cuota')})\n"
                     reporte += "\n"
                     
-                self.bot.send_message(chat_id, reporte, parse_mode="Markdown")
+                self.bot.send_message(chat_id, reporte, parse_mode="HTML")
             except Exception as e:
                 print(f"Error cargando picks para telegram: {e}")
                 self.bot.send_message(chat_id, "❌ Error al leer las combinadas de hoy.")
@@ -239,7 +288,7 @@ class TelegramController:
                 return
                 
             print(f"🎛️ TelegramController: Comando /generar_picks recibido de chat_id={chat_id}")
-            loading_msg = self.bot.send_message(chat_id, "🤖 *Iniciando el equipo de agentes deportivos de IA para generar los picks de hoy...*", parse_mode="Markdown")
+            loading_msg = self.bot.send_message(chat_id, "🤖 <b>Iniciando el equipo de agentes deportivos de IA para generar los picks de hoy...</b>", parse_mode="HTML")
             
             try:
                 from src.services.picks_generator_service import PicksGeneratorService
@@ -247,7 +296,7 @@ class TelegramController:
                 exito, respuesta = gen_srv.generar_picks_ia()
                 
                 if exito:
-                    self.bot.edit_message_text(chat_id=chat_id, message_id=loading_msg.message_id, text=f"✅ *{respuesta}*", parse_mode="Markdown")
+                    self.bot.edit_message_text(chat_id=chat_id, message_id=loading_msg.message_id, text=f"✅ <b>{escape_html(respuesta)}</b>", parse_mode="HTML")
                 else:
                     self.bot.edit_message_text(chat_id=chat_id, message_id=loading_msg.message_id, text=f"❌ Error al generar picks: {respuesta}")
             except Exception as e:
@@ -287,9 +336,9 @@ class TelegramController:
                 self.bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text=f"🎫 *Asentamiento Directo - Ticket:* `{tkt_id}`\n\nSelecciona el resultado final de la apuesta:",
+                    text=f"🎫 <b>Asentamiento Directo - Ticket:</b> <code>{tkt_id}</code>\n\nSelecciona el resultado final de la apuesta:",
                     reply_markup=markup,
-                    parse_mode="Markdown"
+                    parse_mode="HTML"
                 )
                 
             elif data.startswith("settle_tkt:"):
@@ -303,8 +352,8 @@ class TelegramController:
                     self.bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
-                        text=f"🎉 *¡Ticket {tkt_id} liquidado como {estado_final.upper()} con éxito!*\n\nEl balance del reto y las métricas de rendimiento han sido recalculadas.",
-                        parse_mode="Markdown"
+                        text=f"🎉 <b>¡Ticket {escape_html(tkt_id)} liquidado como {escape_html(estado_final.upper())} con éxito!</b>\n\nEl balance del reto y las métricas de rendimiento han sido recalculadas.",
+                        parse_mode="HTML"
                     )
                     # Enviar notificación del reporte de banca actualizado en Telegram
                     from src.services.telegram_service import TelegramService
@@ -317,31 +366,30 @@ class TelegramController:
                 # Publicar picks generados en el canal/grupo
                 from src.services.telegram_service import TelegramService
                 tg_service = TelegramService()
-                base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                JUGADAS_PATH = os.path.join(base_dir, "jugadas_lunes_15.json")
+                JUGADAS_PATH = Settings.jugadas_path_mas_reciente() or Settings.jugadas_path()
                 
                 exito = tg_service.enviar_reporte_picks(JUGADAS_PATH)
                 if exito:
                     self.bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
-                        text="✅ *¡El reporte de Combinadas fue publicado con éxito en Telegram!*",
-                        parse_mode="Markdown"
+                        text="✅ <b>¡El reporte de Combinadas fue publicado con éxito en Telegram!</b>",
+                        parse_mode="HTML"
                     )
                 else:
                     self.bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
-                        text="❌ *Error al intentar publicar los picks. Revisa la configuración del canal.*",
-                        parse_mode="Markdown"
+                        text="❌ <b>Error al intentar publicar los picks. Revisa la configuración del canal.</b>",
+                        parse_mode="HTML"
                     )
                     
             elif data == "cancelar_picks":
                 self.bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
-                    text="❌ *Picks descartados.* No se realizó ninguna acción.",
-                    parse_mode="Markdown"
+                    text="❌ <b>Picks descartados.</b> No se realizó ninguna acción.",
+                    parse_mode="HTML"
                 )
 
 
@@ -355,8 +403,8 @@ class TelegramController:
                 print(f"🎛️ TelegramController: Detectada pregunta de seguimiento en chat_id={chat_id}")
                 loading_msg = self.bot.reply_to(
                     message, 
-                    "🤔 *Analizando tu pregunta de seguimiento con el equipo de agentes...*", 
-                    parse_mode="Markdown"
+                    "🤔 <b>Analizando tu pregunta de seguimiento con el equipo de agentes...</b>", 
+                    parse_mode="HTML"
                 )
                 
                 try:
@@ -364,7 +412,7 @@ class TelegramController:
                     if segmentos:
                         for seg in segmentos:
                             try:
-                                self.bot.send_message(chat_id, seg, parse_mode="Markdown")
+                                self.bot.send_message(chat_id, seg, parse_mode="HTML")
                             except Exception as e_parse:
                                 print(f"⚠️ TelegramController: Error de Markdown ({e_parse}). Reenviando en texto plano...")
                                 self.bot.send_message(chat_id, seg)
@@ -380,16 +428,16 @@ class TelegramController:
                         pass
             else:
                 msg = (
-                    "🤖 *Lo siento, no reconozco ese comando.*\n\n"
+                    "🤖 <b>Lo siento, no reconozco ese comando.</b>\n\n"
                     "• Para analizar un partido usa:\n"
-                    "`/analisis <nombre_equipo>`\n\n"
+                    "<code>/analisis &lt;nombre_equipo&gt;</code>\n\n"
                     "• Para crear picks e ingresar jugadas usa:\n"
-                    "`/crear_picks`\n\n"
+                    "<code>/crear_picks</code>\n\n"
                     "• Para liquidar tickets activos usa:\n"
-                    "`/liquidar`\n\n"
-                    "Usa `/start` para ver la lista completa."
+                    "<code>/liquidar</code>\n\n"
+                    "Usa <code>/start</code> para ver la lista completa."
                 )
-                self.bot.reply_to(message, msg, parse_mode="Markdown")
+                self.bot.reply_to(message, msg, parse_mode="HTML")
 
     # --- MÉTODOS DE LA BOTONERA DE LIQUIDACIÓN ---
     def enviar_botonera_liquidar(self, chat_id, edit_message_id=None):
@@ -399,11 +447,11 @@ class TelegramController:
         activas = datos.get("apuestas_activas", [])
         
         if not activas:
-            msg = "💡 *No tienes apuestas activas pendientes de liquidación en tu historial.*"
+            msg = "💡 <b>No tienes apuestas activas pendientes de liquidación en tu historial.</b>"
             if edit_message_id:
-                self.bot.edit_message_text(chat_id=chat_id, message_id=edit_message_id, text=msg, parse_mode="Markdown")
+                self.bot.edit_message_text(chat_id=chat_id, message_id=edit_message_id, text=msg, parse_mode="HTML")
             else:
-                self.bot.send_message(chat_id, msg, parse_mode="Markdown")
+                self.bot.send_message(chat_id, msg, parse_mode="HTML")
             return
             
         markup = InlineKeyboardMarkup()
@@ -415,11 +463,11 @@ class TelegramController:
             btn_text = f"🎫 {tkt_id}: {tipo} (${inversion:.2f} @{cuota})"
             markup.row(InlineKeyboardButton(btn_text, callback_data=f"liquidar_tkt:{tkt_id}"))
             
-        msg = "📋 *Panel de Liquidación Directa*\n\nSelecciona la jugada activa que deseas asentar:"
+        msg = "📋 <b>Panel de Liquidación Directa</b>\n\nSelecciona la jugada activa que deseas asentar:"
         if edit_message_id:
-            self.bot.edit_message_text(chat_id=chat_id, message_id=edit_message_id, text=msg, reply_markup=markup, parse_mode="Markdown")
+            self.bot.edit_message_text(chat_id=chat_id, message_id=edit_message_id, text=msg, reply_markup=markup, parse_mode="HTML")
         else:
-            self.bot.send_message(chat_id, msg, reply_markup=markup, parse_mode="Markdown")
+            self.bot.send_message(chat_id, msg, reply_markup=markup, parse_mode="HTML")
 
     # --- DETALLES DE CREADOR CONVERSACIONAL ---
     def _step_fecha(self, message):
@@ -449,7 +497,7 @@ class TelegramController:
             "Ejemplo: `España vs. Cabo Verde | España a Ganar | 1.15 | 85%`\n\n"
             "_(Cuando termines de añadir selecciones a este ticket, escribe 'fin')_"
         )
-        sent_msg = self.bot.send_message(chat_id, msg, parse_mode="Markdown")
+        sent_msg = self.bot.send_message(chat_id, msg, parse_mode="HTML")
         self.bot.register_next_step_handler(sent_msg, self._step_agregar_seleccion)
 
     def _step_agregar_seleccion(self, message):
@@ -485,7 +533,7 @@ class TelegramController:
                     "Ejemplo: `Arabia vs. Uruguay | Uruguay gana y -3.5 goles | 1.95 | 60%`\n\n"
                     "_(Escribe 'fin' para concluir la combinada y guardar)_"
                 )
-                sent_msg = self.bot.send_message(chat_id, msg, parse_mode="Markdown")
+                sent_msg = self.bot.send_message(chat_id, msg, parse_mode="HTML")
                 self.bot.register_next_step_handler(sent_msg, self._step_agregar_seleccion)
             else:
                 # Terminamos ambos parleys. Guardar en JSON
@@ -500,7 +548,7 @@ class TelegramController:
                 "Usa exactamente las barras verticales: `Partido | Pronóstico | Cuota | Probabilidad`\n"
                 "Intenta de nuevo:"
             )
-            sent_msg = self.bot.send_message(chat_id, msg_err, parse_mode="Markdown")
+            sent_msg = self.bot.send_message(chat_id, msg_err, parse_mode="HTML")
             self.bot.register_next_step_handler(sent_msg, self._step_agregar_seleccion)
             return
             
@@ -510,7 +558,7 @@ class TelegramController:
             prob_real_val = float(prob_str.replace("%", "").strip())
         except ValueError:
             msg_err = "⚠️ *Error de formato numérico.* Asegúrate de que la cuota (ej: 1.85) y probabilidad (ej: 65%) sean números. Reintenta:"
-            sent_msg = self.bot.send_message(chat_id, msg_err, parse_mode="Markdown")
+            sent_msg = self.bot.send_message(chat_id, msg_err, parse_mode="HTML")
             self.bot.register_next_step_handler(sent_msg, self._step_agregar_seleccion)
             return
 
@@ -562,9 +610,7 @@ class TelegramController:
             }
         }
         
-        # Guardar en archivo jugadas_lunes_15.json en la raíz
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        JUGADAS_PATH = os.path.join(base_dir, "jugadas_lunes_15.json")
+        JUGADAS_PATH = Settings.jugadas_path(estado["fecha"])
         
         # Primero registrar el ticket activo en la base de datos de banca
         banca_srv = GestorBancaService()
@@ -649,4 +695,4 @@ class TelegramController:
             "Los tickets han sido registrados como *apuestas activas* y se debitó $2.00 USD de tu banca disponible.\n\n"
             "¿Deseas publicar este nuevo reporte estético en tu canal de Telegram ahora mismo?"
         )
-        self.bot.send_message(chat_id, preview, reply_markup=markup, parse_mode="Markdown")
+        self.bot.send_message(chat_id, preview, reply_markup=markup, parse_mode="HTML")

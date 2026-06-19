@@ -31,7 +31,6 @@ class PicksGeneratorService:
         self.tg = TelegramService()
         self.odds_api = TheOddsAPIService()
         self.base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        self.jugadas_path = os.path.join(self.base_dir, "jugadas_lunes_15.json")
 
     def encontrar_partido_correspondiente(self, partido_propuesto, partidos_del_dia):
         if not partido_propuesto:
@@ -389,50 +388,99 @@ class PicksGeneratorService:
 
             # 4. Prompt estructurado para forzar al LLM a retornar JSON estricto basándose en la guía de J. Carreño
             prompt_maestro = (
-                "Eres el Agente Científico de Datos de un consorcio de análisis deportivo, aplicando las estrictas directrices de la guía de apuestas de J. Carreño.\n"
+                "Eres un Analista Cuantitativo de Apuestas Deportivas de élite, con formación en estadística bayesiana y teoría de juegos. Tu única misión es MAXIMIZAR el retorno a largo plazo aplicando los principios de Value Betting y gestión de banca de J. Carreño.\n\n"
                 f"{historial_previo}\n"
-                "Dada la siguiente lista de partidos y sus estadísticas de hoy, debes generar exactamente dos combinadas (parleys):\n\n"
+                "=== DATOS DE PARTIDOS DE HOY ===\n"
                 f"{datos_texto}\n"
-                "INSTRUCCIONES DE SELECCIÓN (FILOSOFÍA SPRO J. CARREÑO):\n"
-                "1. 'parley_seguro' (Combinada Segura): Riesgo bajo. Selecciona entre 1 y 3 eventos (preferiblemente 2, pero si hay pocos partidos programados, 1 evento es aceptable). Elige cuotas individuales bajas (entre 1.10 y 1.40) con alta probabilidad real (ej: doble oportunidad, hándicaps a favor o Draw No Bet/sin empate).\n"
-                "2. 'parley_arriesgado' (Combinada de Alto Valor): Riesgo alto pero con ventaja matemática clara (esperanza = cuota * prob > 1). Selecciona entre 1 y 3 eventos (preferiblemente 2, pero si hay pocos partidos programados, 1 evento es aceptable) con cuotas individuales moderadas (entre 1.50 y 2.50), priorizando hándicaps asiáticos para mitigar el riesgo.\n"
-                "3. Todas las selecciones individuales que definas deben poseer valor real (Value+) y cuotas verosímiles de casas de apuestas.\n\n"
-                "!!! REGLAS DE OBLIGATORIO CUMPLIMIENTO (CRÍTICAS) !!!\n"
-                "1. Solo puedes pronosticar partidos que estén en la lista de arriba. Está terminantemente prohibido inventar partidos o usar placeholders como 'X vs Y', 'Fórmula roja vs Azul', 'Nombre Local vs. Nombre Visitante' o cualquier otro.\n"
-                "2. El campo 'partido' en el JSON resultante debe ser exactamente el nombre de uno de los partidos proporcionados en la lista de arriba.\n"
-                "3. El campo 'pronostico' debe ser una recomendación real y concreta de mercado:\n"
-                "   - Para victoria directa: 'Nombre Equipo a Ganar' (ej: 'Francia a Ganar')\n"
-                "   - Para Draw No Bet (DNB): 'DNB Nombre Equipo' (ej: 'DNB Francia')\n"
-                "   - Para Doble Oportunidad: 'Nombre Equipo o Empate' (ej: 'Francia o Empate') o '[Local] o [Visitante]' (ej: 'Francia o Senegal')\n"
-                "   - Para Hándicap Asiático: 'Nombre Equipo Handicap' (ej: 'Francia -0.5 Hándicap Asiático')\n"
-                "   No escribas explicaciones genéricas ni descripciones de texto en el campo 'pronostico'.\n"
-                "4. El campo 'cuota' debe ser un número float (ej. 1.35), nunca un texto o una frase.\n"
-                "5. El campo 'probabilidad_estadistica' debe ser un string con un porcentaje (ej. '85%').\n\n"
-                "Debes retornar ÚNICAMENTE un formato JSON limpio y sin bloques de código markdown (sin ```json), sin explicaciones de texto, respetando exactamente el siguiente esquema:\n"
+                "=== FRAMEWORK DE ANÁLISIS OBLIGATORIO ===\n\n"
+                "Para CADA selección que propongas, debes haber evaluado mentalmente:\n"
+                "  A) FORTALEZA RELATIVA: ¿Cuánto mejor es el equipo seleccionado vs. su rival? (H2H, forma reciente, calidad de plantilla)\n"
+                "  B) CONTEXTO MOTIVACIONAL: ¿Necesita ganar para clasificar? ¿Ya está clasificado y rotará? ¿Es partido inaugural?\n"
+                "  C) EDGE DE CUOTAS: ¿La cuota del bookmaker subestima la probabilidad real del evento? (prob_estadistica > prob_implicita = VALUE)\n"
+                "  D) CORRELACIÓN: Evita seleccionar dos partidos del mismo grupo que puedan afectarse mutuamente.\n\n"
+                "=== REGLAS DE CONSTRUCCIÓN DE PARLEYS ===\n\n"
+                "⚠️ REGLA ABSOLUTA: Cada parley DEBE tener MÍNIMO 2 selecciones. Ideal 2-3 por parley.\n\n"
+                "1. 'parley_seguro' (Combinada de Valor):\n"
+                "   - OBJETIVO: Cuota combinada entre 2.00x y 4.00x\n"
+                "   - MÍNIMO 2 selecciones, máximo 3\n"
+                "   - Cuotas individuales entre 1.35 y 2.00\n"
+                "   - MERCADOS RENTABLES (en orden de preferencia):\n"
+                "     * Victoria directa (1X2) de favorito con cuota >= 1.40\n"
+                "     * Draw No Bet (DNB) con cuota >= 1.35 (reduce riesgo, mantiene valor)\n"
+                "     * Hándicap Asiático conservador (ej: -0.5, -1.0) con cuota >= 1.40\n"
+                "     * Más de 1.5 goles (si ambos equipos atacan y la cuota es >= 1.35)\n"
+                "   - PROHIBIDO: Doble oportunidad con cuota < 1.35, DNB con cuota < 1.30\n"
+                "   - CLAVE: Busca equipos SÓLIDOS defensivamente como locales o con ventaja histórica clara\n\n"
+                "2. 'parley_arriesgado' (Combinada Bomba):\n"
+                "   - OBJETIVO: Cuota combinada MÍNIMA de 5.00x (ideal 5.00x - 15.00x)\n"
+                "   - MÍNIMO 2 selecciones, máximo 3\n"
+                "   - Cuotas individuales entre 1.80 y 4.50\n"
+                "   - MERCADOS DE ALTO VALOR (busca edges grandes):\n"
+                "     * Victoria directa del equipo infravalorado (ej: el 'underdog' que tiene mejor forma reciente)\n"
+                "     * Hándicap Asiático agresivo (ej: favorito -1.5 o -2.0) cuando hay dominio aplastante\n"
+                "     * Más de 2.5 goles en partidos con historial ofensivo\n"
+                "     * Ambos equipos anotan (BTTS/Sí) cuando ambos tienen ataque potente\n"
+                "   - PROHIBIDO: Cuotas menores a 1.80 en el parley arriesgado\n"
+                "   - CLAVE: Aquí buscamos el GRAN GOLPE — selecciones donde tu análisis detecta una discrepancia grande entre la cuota del bookmaker y la probabilidad real\n\n"
+                "3. REGLA DE VALOR OBLIGATORIA:\n"
+                "   - Para cada selección: probabilidad_estadistica (tu estimación) > probabilidad_implicita (1/cuota × 100)\n"
+                "   - Si la diferencia es < 3%, NO la incluyas. El edge mínimo debe ser 3%+\n"
+                "   - Ejemplo: cuota 1.55 → prob implícita 64.5%. Tu estimación debe ser >= 67.5% para incluirla.\n\n"
+                "=== ERRORES COMUNES A EVITAR ===\n"
+                "- NO combines selecciones de cuota 1.10-1.30 pensando que son 'seguras'. Son trampas de valor.\n"
+                "- NO pongas 3 selecciones de cuota 1.80 en el arriesgado si la combinada no llega a 5.00x.\n"
+                "- NO selecciones partidos donde no tienes datos suficientes para estimar la probabilidad.\n"
+                "- NO repitas el mismo partido en ambos parleys.\n"
+                "- Si el historial previo muestra que un tipo de mercado ha fallado consistentemente, EVÍTALO.\n\n"
+                "=== REGLAS DE FORMATO (OBLIGATORIO) ===\n"
+                "1. Solo puedes pronosticar partidos de la lista de arriba. PROHIBIDO inventar partidos.\n"
+                "2. El campo 'partido' debe coincidir EXACTAMENTE con uno de la lista.\n"
+                "3. El campo 'pronostico' debe ser concreto y específico:\n"
+                "   - Victoria directa: 'Nombre Equipo a Ganar' (ej: 'Francia a Ganar')\n"
+                "   - DNB: 'DNB Nombre Equipo' (ej: 'DNB Francia')\n"
+                "   - Doble Oportunidad: 'Nombre Equipo o Empate' (ej: 'Francia o Empate')\n"
+                "   - Hándicap Asiático: 'Nombre Equipo -X.X Hándicap Asiático' (ej: 'Francia -1.5 Hándicap Asiático')\n"
+                "   - Goles: 'Más de X.X goles' (ej: 'Más de 2.5 goles')\n"
+                "   - BTTS: 'Ambos equipos anotan (Sí)' o 'Ambos equipos anotan (No)'\n"
+                "4. El campo 'cuota' debe ser un número float (ej: 1.55). NUNCA texto.\n"
+                "5. El campo 'probabilidad_estadistica' debe ser un porcentaje como string (ej: '72%').\n\n"
+                "Retorna ÚNICAMENTE JSON puro sin bloques de código markdown, sin texto antes o después:\n"
                 "{\n"
                 "  \"parley_seguro\": {\n"
-                "    \"nombre\": \"Combinada Segura Lunes\",\n"
-                "    \"tipo_riesgo\": \"Bajo\",\n"
+                "    \"nombre\": \"Combinada de Valor\",\n"
+                "    \"tipo_riesgo\": \"Moderado\",\n"
                 "    \"stake_sugerido\": \"5/10 (Unidades)\",\n"
                 "    \"selecciones\": [\n"
                 "      {\n"
-                "        \"partido\": \"Nombre Local vs. Nombre Visitante\",\n"
-                "        \"pronostico\": \"DNB Favorito (o similar)\",\n"
-                "        \"cuota\": 1.25,\n"
-                "        \"probabilidad_estadistica\": \"80%\"\n"
+                "        \"partido\": \"Equipo A vs. Equipo B\",\n"
+                "        \"pronostico\": \"Equipo A a Ganar\",\n"
+                "        \"cuota\": 1.55,\n"
+                "        \"probabilidad_estadistica\": \"72%\"\n"
+                "      },\n"
+                "      {\n"
+                "        \"partido\": \"Equipo C vs. Equipo D\",\n"
+                "        \"pronostico\": \"DNB Equipo C\",\n"
+                "        \"cuota\": 1.65,\n"
+                "        \"probabilidad_estadistica\": \"68%\"\n"
                 "      }\n"
                 "    ]\n"
                 "  },\n"
                 "  \"parley_arriesgado\": {\n"
-                "    \"nombre\": \"Combinada de Alto Valor Lunes\",\n"
+                "    \"nombre\": \"Combinada Bomba\",\n"
                 "    \"tipo_riesgo\": \"Alto\",\n"
                 "    \"stake_sugerido\": \"1/10 (Unidades)\",\n"
                 "    \"selecciones\": [\n"
                 "      {\n"
-                "        \"partido\": \"Nombre Local vs. Nombre Visitante\",\n"
-                "        \"pronostico\": \"Hándicap Asiático +0.5 (o similar)\",\n"
-                "        \"cuota\": 1.90,\n"
-                "        \"probabilidad_estadistica\": \"60%\"\n"
+                "        \"partido\": \"Equipo E vs. Equipo F\",\n"
+                "        \"pronostico\": \"Equipo E a Ganar\",\n"
+                "        \"cuota\": 2.50,\n"
+                "        \"probabilidad_estadistica\": \"48%\"\n"
+                "      },\n"
+                "      {\n"
+                "        \"partido\": \"Equipo G vs. Equipo H\",\n"
+                "        \"pronostico\": \"Equipo G -1.5 Hándicap Asiático\",\n"
+                "        \"cuota\": 2.30,\n"
+                "        \"probabilidad_estadistica\": \"50%\"\n"
                 "      }\n"
                 "    ]\n"
                 "  }\n"
@@ -469,6 +517,12 @@ class PicksGeneratorService:
                             valid_generation = False
                             break
                         
+                        # Validar mínimo 2 selecciones por parley
+                        if len(parley["selecciones"]) < 2:
+                            print(f"⚠️ PicksGeneratorService: {key} tiene solo {len(parley['selecciones'])} selección(es), mínimo requerido: 2. Reintentando...")
+                            valid_generation = False
+                            break
+                        
                         for sel in parley["selecciones"]:
                             # Validar que no contenga placeholders o nombres genéricos
                             partido_propuesto = sel.get("partido", "")
@@ -487,13 +541,31 @@ class PicksGeneratorService:
                                 # Forzar el nombre exacto de la lista de hoy para evitar inconsistencias
                                 sel["partido"] = partido_real
                             
-                            # Validar cuota numérica
+                            # Validar cuota numérica y mínimos por tipo de parley
                             try:
                                 cuota = float(sel.get("cuota", 0))
                                 if cuota <= 1.0:
                                     print(f"⚠️ PicksGeneratorService: Cuota inválida: {cuota}")
                                     valid_generation = False
                                     break
+                                # Rechazar cuotas sin valor según el tipo de parley
+                                min_cuota = 1.35 if key == "parley_seguro" else 1.80
+                                if cuota < min_cuota:
+                                    print(f"⚠️ PicksGeneratorService: Cuota {cuota} demasiado baja para {key} (mínimo {min_cuota}). Reintentando...")
+                                    valid_generation = False
+                                    break
+                                
+                                # Validar edge mínimo (prob_estadistica > prob_implicita + 3%)
+                                try:
+                                    prob_est_val = float(str(sel.get('probabilidad_estadistica', '70%')).replace('%', '').strip())
+                                    prob_imp_val = (1.0 / cuota) * 100
+                                    edge = prob_est_val - prob_imp_val
+                                    if edge < 3.0:
+                                        print(f"⚠️ PicksGeneratorService: Edge insuficiente para '{sel.get('partido')}': {edge:.1f}% (mínimo 3%). Reintentando...")
+                                        valid_generation = False
+                                        break
+                                except (ValueError, TypeError):
+                                    pass
                             except (ValueError, TypeError):
                                 print(f"⚠️ PicksGeneratorService: No se pudo convertir cuota a float: {sel.get('cuota')}")
                                 valid_generation = False
@@ -511,6 +583,27 @@ class PicksGeneratorService:
                         if not valid_generation:
                             break
                             
+                    if valid_generation:
+                        # Validar cuotas combinadas mínimas
+                        for key_check in ["parley_seguro", "parley_arriesgado"]:
+                            cuota_combinada = 1.0
+                            for sel in parsed_data[key_check]["selecciones"]:
+                                cuota_combinada *= float(sel.get("cuota", 1.0))
+                            min_combinada = 2.00 if key_check == "parley_seguro" else 5.0
+                            if cuota_combinada < min_combinada:
+                                print(f"⚠️ PicksGeneratorService: Cuota combinada de {key_check} es {cuota_combinada:.2f}x, mínimo requerido {min_combinada}x. Reintentando...")
+                                valid_generation = False
+                                break
+                        
+                        # Validar que no se repita el mismo partido en ambos parleys
+                        if valid_generation:
+                            partidos_seguro = {sel.get('partido') for sel in parsed_data['parley_seguro']['selecciones']}
+                            partidos_arriesgado = {sel.get('partido') for sel in parsed_data['parley_arriesgado']['selecciones']}
+                            repetidos = partidos_seguro & partidos_arriesgado
+                            if repetidos:
+                                print(f"⚠️ PicksGeneratorService: Partidos repetidos entre parleys: {repetidos}. Reintentando...")
+                                valid_generation = False
+                    
                     if valid_generation:
                         picks_data = parsed_data
                         print("✅ PicksGeneratorService: Generación validada correctamente!")
@@ -567,8 +660,9 @@ class PicksGeneratorService:
                 }
             }
 
-            # Guardar en jugadas_lunes_15.json
-            with open(self.jugadas_path, "w", encoding="utf-8") as f:
+            # Guardar en jugadas_YYYY-MM-DD.json (nombre dinámico)
+            jugadas_path = Settings.jugadas_path(fecha_hoy)
+            with open(jugadas_path, "w", encoding="utf-8") as f:
                 json.dump(datos_picks, f, indent=2, ensure_ascii=False)
                 
             # 7. Registrar en la base de datos de predicciones de IA (evitando redundancias/duplicados)
@@ -643,7 +737,7 @@ class PicksGeneratorService:
 
 
             # 8. Publicar en Telegram de inmediato
-            self.tg.enviar_reporte_picks(self.jugadas_path)
+            self.tg.enviar_reporte_picks(jugadas_path)
             
             # 9. Actualizar log de éxito
             detalles_exito = f"Picks generados y guardados con éxito para la jornada {fecha_hoy}."

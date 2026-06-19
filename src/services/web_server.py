@@ -12,19 +12,16 @@ import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import sys
 
-# Asegurar codificación UTF-8 para consola en Windows
-if hasattr(sys.stdout, 'reconfigure'):
-    sys.stdout.reconfigure(encoding='utf-8')
-if hasattr(sys.stderr, 'reconfigure'):
-    sys.stderr.reconfigure(encoding='utf-8')
-
 # Agregar raíz al PYTHONPATH
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
+import src.config.encoding  # noqa: F401 — Centraliza reconfigure de stdout/stderr UTF-8
+
 from src.services.gestor_banca_service import GestorBancaService
 from src.services.telegram_service import TelegramService
+from src.config.settings import Settings
 
 PORT = int(os.environ.get("PORT", 8000))
 DASHBOARD_DIR = os.path.join(BASE_DIR, "dashboard")
@@ -50,8 +47,8 @@ class DashboardAPIHandler(BaseHTTPRequestHandler):
                 if datos:
                     # Inyectar propuestas de hoy leídas desde el JSON
                     propuestas_hoy = None
-                    jugadas_path = os.path.join(BASE_DIR, "jugadas_lunes_15.json")
-                    if os.path.exists(jugadas_path):
+                    jugadas_path = Settings.jugadas_path_mas_reciente()
+                    if jugadas_path and os.path.exists(jugadas_path):
                         try:
                             with open(jugadas_path, "r", encoding="utf-8") as f:
                                 propuestas_hoy = json.load(f)
@@ -439,8 +436,8 @@ class DashboardAPIHandler(BaseHTTPRequestHandler):
                 }
             }
             
-            # Guardar jugadas_lunes_15.json
-            jugadas_path = os.path.join(BASE_DIR, "jugadas_lunes_15.json")
+            # Guardar jugadas_YYYY-MM-DD.json (nombre dinámico)
+            jugadas_path = Settings.jugadas_path(fecha)
             with open(jugadas_path, "w", encoding="utf-8") as f:
                 json.dump(datos_picks, f, indent=2, ensure_ascii=False)
                 

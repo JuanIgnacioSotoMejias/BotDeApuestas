@@ -1,6 +1,8 @@
-// 🏆 LOGICA DEL DASHBOARD INTERACTIVO Y CONSOLA DE ADMINISTRACIÓN
+// 🏆 LÓGICA DEL DASHBOARD INTERACTIVO Y CONSOLA DE ADMINISTRACIÓN (PREMIUM)
 
 window.growthChartInstance = null;
+window.projectedLabels = null;
+window.projectedSeries = null;
 
 document.addEventListener("DOMContentLoaded", async () => {
     // Inicializar elementos de UI
@@ -45,7 +47,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     
     const containerAdminTickets = document.getElementById("admin-active-tickets-list");
     const containerProposedPicks = document.getElementById("proposed-picks-container");
-    const cardProposedPicks = document.getElementById("proposed-picks-card");
     const predictionsTbody = document.getElementById("predictions-tbody");
     
     const btnActualizarResultados = document.getElementById("btn-actualizar-resultados");
@@ -61,14 +62,131 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     let dataBanca = null;
 
-    // Conversión de Cuota Decimal a Americana
-    const decimalToAmerican = (odd) => {
+    // --- SYSTEMA DE TOAST NOTIFICATIONS ---
+    const showToast = (message, type = "info") => {
+        const container = document.getElementById("toast-container");
+        if (!container) return;
+        
+        const toast = document.createElement("div");
+        toast.className = `toast toast-${type}`;
+        
+        let icon = "💡";
+        if (type === "success") icon = "✅";
+        if (type === "error") icon = "❌";
+        
+        toast.innerHTML = `
+            <div style="font-size: 1.2rem; display: flex; align-items: center;">${icon}</div>
+            <div class="toast-message">${message}</div>
+            <button class="toast-close" aria-label="Cerrar">&times;</button>
+        `;
+        
+        container.appendChild(toast);
+        setTimeout(() => toast.classList.add("show"), 50);
+        
+        const closeToast = () => {
+            toast.classList.remove("show");
+            setTimeout(() => toast.remove(), 400);
+        };
+        
+        toast.querySelector(".toast-close").addEventListener("click", closeToast);
+        setTimeout(closeToast, 4000);
+    };
+
+    // --- SYSTEMA DE MODALES PERSONALIZADOS ---
+    const showModal = (title, message, onConfirm, onCancel = null) => {
+        const modal = document.getElementById("custom-modal");
+        const elTitle = document.getElementById("modal-title");
+        const elMessage = document.getElementById("modal-message");
+        const btnConfirm = document.getElementById("modal-btn-confirm");
+        const btnCancel = document.getElementById("modal-btn-cancel");
+        const btnClose = document.getElementById("modal-close-btn");
+        
+        if (!modal) return;
+        
+        elTitle.textContent = title;
+        elMessage.textContent = message;
+        
+        modal.style.display = "flex";
+        setTimeout(() => modal.classList.add("show"), 50);
+        
+        const cleanup = () => {
+            modal.classList.remove("show");
+            setTimeout(() => {
+                modal.style.display = "none";
+            }, 300);
+        };
+        
+        const handleConfirm = () => {
+            cleanup();
+            if (onConfirm) onConfirm();
+        };
+        
+        const handleCancel = () => {
+            cleanup();
+            if (onCancel) onCancel();
+        };
+        
+        // Clonar para limpiar listeners anteriores
+        const newConfirm = btnConfirm.cloneNode(true);
+        const newCancel = btnCancel.cloneNode(true);
+        const newClose = btnClose.cloneNode(true);
+        
+        btnConfirm.parentNode.replaceChild(newConfirm, btnConfirm);
+        btnCancel.parentNode.replaceChild(newCancel, btnCancel);
+        btnClose.parentNode.replaceChild(newClose, btnClose);
+        
+        newConfirm.addEventListener("click", handleConfirm);
+        newCancel.addEventListener("click", handleCancel);
+        newClose.addEventListener("click", handleCancel);
+    };
+
+    const askConfirmation = (title, message) => {
+        return new Promise((resolve) => {
+            showModal(title, message, () => resolve(true), () => resolve(false));
+        });
+    };
+
+    // --- SELECTOR DE FORMATO DE CUOTAS ---
+    let currentOddsFormat = "decimal";
+
+    const formatOdds = (odd) => {
         if (!odd || odd <= 1.0) return "";
-        if (odd >= 2.0) {
-            return `+${Math.round((odd - 1.0) * 100)}`;
+        const val = parseFloat(odd);
+        if (currentOddsFormat === "decimal") {
+            return `x${val.toFixed(2)}`;
         } else {
-            return `${Math.round(-100 / (odd - 1.0))}`;
+            // Cuota Americana
+            if (val >= 2.0) {
+                return `+${Math.round((val - 1.0) * 100)}`;
+            } else {
+                return `${Math.round(-100 / (val - 1.0))}`;
+            }
         }
+    };
+
+    const setupOddsToggle = () => {
+        const btnDec = document.getElementById("toggle-odds-dec");
+        const btnAme = document.getElementById("toggle-odds-ame");
+        
+        if (!btnDec || !btnAme) return;
+        
+        btnDec.addEventListener("click", () => {
+            if (currentOddsFormat === "decimal") return;
+            currentOddsFormat = "decimal";
+            btnDec.classList.add("active");
+            btnAme.classList.remove("active");
+            cargarYRenderizar();
+            showToast("Cuotas cambiadas a formato Decimal.", "info");
+        });
+        
+        btnAme.addEventListener("click", () => {
+            if (currentOddsFormat === "american") return;
+            currentOddsFormat = "american";
+            btnAme.classList.add("active");
+            btnDec.classList.remove("active");
+            cargarYRenderizar();
+            showToast("Cuotas cambiadas a formato Americano.", "info");
+        });
     };
 
     // Configurar fecha por defecto (Hoy)
@@ -93,6 +211,11 @@ document.addEventListener("DOMContentLoaded", async () => {
                 });
                 tab.btn.classList.add("active");
                 tab.panel.style.display = "grid";
+                
+                // Cargar logs al entrar a Admin
+                if (tab.btn === tabAdminBtn) {
+                    cargarYRenderizarLogsIA();
+                }
             });
         });
     };
@@ -121,7 +244,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             <button type="button" class="btn-danger-icon remove-row-btn" title="Eliminar Evento">🗑️</button>
         `;
 
-        // Añadir evento para remover
         row.querySelector(".remove-row-btn").addEventListener("click", () => {
             row.remove();
         });
@@ -133,9 +255,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         const btnGenerarIa = document.getElementById("btn-generar-ia");
         if (btnGenerarIa) {
             btnGenerarIa.addEventListener("click", async () => {
-                if (!confirm("🤖 ¿Estás seguro de que deseas activar a los agentes de IA para buscar, analizar y generar automáticamente los parleys oficiales de hoy?")) {
-                    return;
-                }
+                const confirmed = await askConfirmation("🤖 Generar con IA", "¿Deseas activar a los agentes de IA para buscar, analizar y generar automáticamente los parleys oficiales de hoy?");
+                if (!confirmed) return;
                 
                 const originalText = btnGenerarIa.textContent;
                 btnGenerarIa.textContent = "⏳ Generando...";
@@ -149,16 +270,16 @@ document.addEventListener("DOMContentLoaded", async () => {
                     
                     if (res.ok) {
                         const data = await res.json();
-                        alert("🎉 " + data.message);
+                        showToast(data.message, "success");
                         await cargarYRenderizar();
                         tabVisualBtn.click();
                     } else {
                         const err = await res.text();
-                        alert("❌ Error al generar picks con agentes: " + err);
+                        showToast("Error al generar picks con agentes: " + err, "error");
                     }
                 } catch (e) {
                     console.error(e);
-                    alert("❌ Error al comunicarse con la API de generación.");
+                    showToast("Error al comunicarse con la API de generación.", "error");
                 } finally {
                     btnGenerarIa.textContent = originalText;
                     btnGenerarIa.disabled = false;
@@ -169,9 +290,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         const btnLimpiarPredicciones = document.getElementById("btn-limpiar-predicciones");
         if (btnLimpiarPredicciones) {
             btnLimpiarPredicciones.addEventListener("click", async () => {
-                if (!confirm("🧹 ¿Estás seguro de que deseas eliminar permanentemente todas las predicciones de IA de la base de datos? Esta acción no se puede deshacer y afectará tanto local como producción.")) {
-                    return;
-                }
+                const confirmed = await askConfirmation("🧹 Limpiar Predicciones", "¿Estás seguro de que deseas eliminar permanentemente todas las predicciones de IA de la base de datos? Esta acción no se puede deshacer.");
+                if (!confirmed) return;
                 
                 const originalText = btnLimpiarPredicciones.textContent;
                 btnLimpiarPredicciones.textContent = "⏳ Limpiando...";
@@ -185,15 +305,15 @@ document.addEventListener("DOMContentLoaded", async () => {
                     
                     if (res.ok) {
                         const data = await res.json();
-                        alert("✅ " + data.message);
+                        showToast(data.message, "success");
                         await cargarYRenderizar();
                     } else {
                         const err = await res.text();
-                        alert("❌ Error al limpiar predicciones: " + err);
+                        showToast("Error al limpiar predicciones: " + err, "error");
                     }
                 } catch (e) {
                     console.error(e);
-                    alert("❌ Error de comunicación con el servidor.");
+                    showToast("Error de comunicación con el servidor.", "error");
                 } finally {
                     btnLimpiarPredicciones.textContent = originalText;
                     btnLimpiarPredicciones.disabled = false;
@@ -220,7 +340,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             
             const submitBtn = formCrearPicks.querySelector(".submit-picks-btn");
             const originalBtnText = submitBtn.textContent;
-            submitBtn.textContent = "⏳ Registrando y Enviando...";
+            submitBtn.textContent = "⏳ Registrando...";
             submitBtn.disabled = true;
 
             try {
@@ -228,7 +348,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 const parleyArriesgadoData = processSelections("arriesgado");
 
                 if (!parleySeguroData || !parleyArriesgadoData) {
-                    alert("❌ Debes agregar al menos una selección válida en cada combinada.");
+                    showToast("Debes agregar al menos una selección válida en cada combinada.", "error");
                     submitBtn.textContent = originalBtnText;
                     submitBtn.disabled = false;
                     return;
@@ -249,7 +369,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
                 if (res.ok) {
                     const resJson = await res.json();
-                    alert("🎉 " + resJson.message);
+                    showToast(resJson.message, "success");
                     
                     // Limpiar y resetear formulario
                     containerSeguro.innerHTML = "";
@@ -264,11 +384,11 @@ document.addEventListener("DOMContentLoaded", async () => {
                     tabVisualBtn.click();
                 } else {
                     const err = await res.text();
-                    alert("❌ Error al registrar picks: " + err);
+                    showToast("Error al registrar picks: " + err, "error");
                 }
             } catch (err) {
                 console.error(err);
-                alert("❌ Error de comunicación con la API del Servidor.");
+                showToast("Error de comunicación con la API del Servidor.", "error");
             } finally {
                 submitBtn.textContent = originalBtnText;
                 submitBtn.disabled = false;
@@ -328,7 +448,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     // --- CARGAR Y RENDERIZAR DATOS ---
     const cargarYRenderizar = async () => {
         try {
-            // Intentar cargar datos desde la API del servidor local
             const resBanca = await fetch("/api/banca");
             if (!resBanca.ok) throw new Error("HTTP error " + resBanca.status);
             dataBanca = await resBanca.json();
@@ -382,7 +501,8 @@ document.addEventListener("DOMContentLoaded", async () => {
                         ]
                     }
                 ],
-                "apuestas_archivadas": []
+                "apuestas_archivadas": [],
+                "predicciones_ia": []
             };
         }
 
@@ -407,7 +527,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         elYield.textContent = s.rendimiento_yield;
         elRoi.textContent = s.roi;
         
-        // Estilo de ROI positivo/negativo
         if (parseFloat(s.roi) > 0) {
             elRoi.style.color = "#10b981";
         } else if (parseFloat(s.roi) < 0) {
@@ -442,7 +561,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
                 if (algunPartidoTerminado) {
                     console.log(`🚫 Omitiendo combinada "${parley.nombre}" porque contiene partidos ya finalizados.`);
-                    return; // Saltar renderizado
+                    return; 
                 }
 
                 parleysFound = true;
@@ -465,7 +584,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                     html += `
                         <div class="sel-item">
                             <span class="sel-match">${sel.partido}</span>
-                            <span class="sel-pick">${sel.pronostico} (<b>x${cuotaDec.toFixed(2)} / ${decimalToAmerican(cuotaDec)}</b>)</span>
+                            <span class="sel-pick">${sel.pronostico} (<b>${formatOdds(cuotaDec)}</b>)</span>
                         </div>
                     `;
                 });
@@ -474,7 +593,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                         </div>
                         <div class="ticket-footer" style="flex-direction: column; align-items: stretch; gap: 12px; background: rgba(255,255,255,0.01);">
                             <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-secondary);">
-                                <span>Cuota Combinada: <b style="color: var(--accent-blue);">x${cuotaTotal.toFixed(2)} (${decimalToAmerican(cuotaTotal)})</b></span>
+                                <span>Cuota Combinada: <b style="color: var(--accent-blue);">${formatOdds(cuotaTotal)}</b></span>
                                 <span>Prob. Combinada: <b>${parley.probabilidad_estadistica_combinada || 'N/A'}</b></span>
                             </div>
                             <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 5px;">
@@ -497,11 +616,12 @@ document.addEventListener("DOMContentLoaded", async () => {
                 btnJugar.addEventListener("click", async () => {
                     const stakeVal = parseFloat(inputStake.value);
                     if (isNaN(stakeVal) || stakeVal <= 0) {
-                        alert("❌ Por favor ingresa un monto de inversión válido.");
+                        showToast("Por favor ingresa un monto de inversión válido.", "error");
                         return;
                     }
 
-                    if (confirm(`¿Confirmas que deseas jugar $${stakeVal.toFixed(2)} USD en la combinada "${parley.nombre}"?`)) {
+                    const confirmed = await askConfirmation("🎮 Jugar Combinada", `¿Confirmas que deseas jugar $${stakeVal.toFixed(2)} USD en la combinada "${parley.nombre}"?`);
+                    if (confirmed) {
                         btnJugar.textContent = "⏳ Procesando...";
                         btnJugar.disabled = true;
 
@@ -519,16 +639,16 @@ document.addEventListener("DOMContentLoaded", async () => {
 
                             if (res.ok) {
                                 const resJson = await res.json();
-                                alert(`🎉 ${resJson.message}`);
+                                showToast(resJson.message, "success");
                                 await cargarYRenderizar();
                             } else {
                                 const errData = await res.json().catch(() => ({}));
                                 const errMsg = errData.error || "Error al colocar apuesta.";
-                                alert(`❌ ${errMsg}`);
+                                showToast(errMsg, "error");
                             }
                         } catch (err) {
                             console.error(err);
-                            alert("❌ Error de comunicación con la API del Servidor.");
+                            showToast("Error de comunicación con la API del Servidor.", "error");
                         } finally {
                             btnJugar.textContent = "🎮 Jugar Parley";
                             btnJugar.disabled = false;
@@ -571,7 +691,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                     html += `
                         <div class="sel-item">
                             <span class="sel-match">${sel.partido}</span>
-                            <span class="sel-pick">${sel.pronostico} (<b>x${cuotaDec.toFixed(2)} / ${decimalToAmerican(cuotaDec)}</b>)</span>
+                            <span class="sel-pick">${sel.pronostico} (<b>${formatOdds(cuotaDec)}</b>)</span>
                         </div>
                     `;
                 });
@@ -580,7 +700,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                         </div>
                         <div class="ticket-footer">
                             <span class="ticket-meta">Inversión: <b>$${tkt.inversion.toFixed(2)} USD</b></span>
-                            <span class="ticket-odds">Cuota: <b>x${tkt.cuota.toFixed(2)} (${decimalToAmerican(tkt.cuota)})</b> (Retorno: $${(tkt.retorno_potencial || 0).toFixed(2)})</span>
+                            <span class="ticket-odds">Cuota: <b>${formatOdds(tkt.cuota)}</b> (Retorno: $${(tkt.retorno_potencial || 0).toFixed(2)})</span>
                         </div>
                     </div>
                 `;
@@ -622,7 +742,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                     <div class="settled-ticket">
                         <div class="settled-info">
                             <h4>Ticket ${tkt.ticket_id}</h4>
-                            <p>${tkt.tipo_parley} | Jornada: ${tkt.fecha_jornada} | Cuota: x${tkt.cuota.toFixed(2)} (${decimalToAmerican(tkt.cuota)})</p>
+                            <p>${tkt.tipo_parley} | Jornada: ${tkt.fecha_jornada} | Cuota: ${formatOdds(tkt.cuota)}</p>
                         </div>
                         <div class="settled-outcome">
                             <div class="outcome-val ${classVal}">${txtMonto} USD</div>
@@ -652,7 +772,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                         <span class="badge-status ${tkt.tipo_parley.toLowerCase().includes("segura") ? "" : "arriesgada"}">${tkt.tipo_parley}</span>
                     </div>
                     <p class="ticket-meta">
-                        Inversión: <b>$${tkt.inversion.toFixed(2)} USD</b> | Cuota: <b>x${tkt.cuota.toFixed(2)} (${decimalToAmerican(tkt.cuota)})</b>
+                        Inversión: <b>$${tkt.inversion.toFixed(2)} USD</b> | Cuota: <b>${formatOdds(tkt.cuota)}</b>
                     </p>
                     <div class="settle-actions">
                         <button class="settle-btn btn-win" data-id="${tkt.ticket_id}" data-action="Ganada">Ganado</button>
@@ -666,7 +786,8 @@ document.addEventListener("DOMContentLoaded", async () => {
                         const id = btn.getAttribute("data-id");
                         const estado = btn.getAttribute("data-action");
                         
-                        if (confirm(`¿Estás seguro de liquidar el ticket ${id} como "${estado.toUpperCase()}"?`)) {
+                        const confirmed = await askConfirmation("⚙️ Liquidar Ticket", `¿Estás seguro de liquidar el ticket ${id} como "${estado.toUpperCase()}"?`);
+                        if (confirmed) {
                             await liquidarTicket(id, estado);
                         }
                     });
@@ -684,7 +805,35 @@ document.addEventListener("DOMContentLoaded", async () => {
         const preds = dataBanca.predicciones_ia || [];
         predictionsTbody.innerHTML = "";
 
-        const totalItems = preds.length;
+        // Capturar filtros
+        const searchInput = document.getElementById("search-prediccion");
+        const filterStatus = document.getElementById("filter-prediccion-estado");
+        const filterType = document.getElementById("filter-prediccion-tipo");
+        
+        let filteredPreds = [...preds];
+        
+        if (searchInput && searchInput.value.trim() !== "") {
+            const query = searchInput.value.toLowerCase().trim();
+            filteredPreds = filteredPreds.filter(p => 
+                (p.partido && p.partido.toLowerCase().includes(query)) ||
+                (p.pronostico && p.pronostico.toLowerCase().includes(query))
+            );
+        }
+        
+        if (filterStatus && filterStatus.value !== "all") {
+            const statusVal = filterStatus.value;
+            filteredPreds = filteredPreds.filter(p => p.estado === statusVal);
+        }
+        
+        if (filterType && filterType.value !== "all") {
+            const typeVal = filterType.value.toLowerCase();
+            filteredPreds = filteredPreds.filter(p => {
+                const pType = (p.tipo_parley || "").toLowerCase();
+                return pType.includes(typeVal);
+            });
+        }
+
+        const totalItems = filteredPreds.length;
         const totalPages = Math.ceil(totalItems / predictionsPageSize) || 1;
         
         if (predictionsCurrentPage > totalPages) {
@@ -705,15 +854,33 @@ document.addEventListener("DOMContentLoaded", async () => {
         
         const startIndex = (predictionsCurrentPage - 1) * predictionsPageSize;
         const endIndex = startIndex + predictionsPageSize;
-        const paginatedPreds = preds.slice(startIndex, endIndex);
+        const paginatedPreds = filteredPreds.slice(startIndex, endIndex);
 
         if (paginatedPreds.length > 0) {
             paginatedPreds.forEach(p => {
                 const tr = document.createElement("tr");
                 tr.style.borderBottom = "1px solid rgba(255, 255, 255, 0.05)";
 
-                const badgeState = p.estado === "Ganado" ? "badge-status" : (p.estado === "Perdido" ? "badge-status arriesgada" : "badge-status");
-                const stateStyle = p.estado === "Ganado" ? "" : (p.estado === "Perdido" ? "" : "background: rgba(156,163,175,0.15); color: #9ca3af;");
+                const isGano = p.estado === "Ganado";
+                const isPerdido = p.estado === "Perdido";
+                
+                let badgeClass = "badge-status";
+                let stateStyle = "background: rgba(156,163,175,0.15); color: #9ca3af;";
+                let dotColor = "purple";
+                
+                if (isGano) {
+                    badgeClass = "badge-status";
+                    stateStyle = "background: rgba(16, 185, 129, 0.15); color: var(--accent-green);";
+                    dotColor = "green";
+                } else if (isPerdido) {
+                    badgeClass = "badge-status arriesgada";
+                    stateStyle = "background: rgba(239, 68, 68, 0.15); color: var(--accent-red);";
+                    dotColor = "red";
+                } else {
+                    badgeClass = "badge-status";
+                    stateStyle = "background: rgba(14, 165, 233, 0.15); color: var(--accent-blue);";
+                    dotColor = "blue";
+                }
                 
                 const fechaFmt = p.fecha ? p.fecha.split("T")[0] : "-";
                 const cuotaDec = parseFloat(p.cuota);
@@ -722,12 +889,12 @@ document.addEventListener("DOMContentLoaded", async () => {
                     <td style="padding: 12px 10px; font-weight: 500; color: var(--text-secondary);">${fechaFmt}</td>
                     <td style="padding: 12px 10px; font-weight: 600;">${p.partido}</td>
                     <td style="padding: 12px 10px; color: var(--accent-blue); font-weight: 500;">${p.pronostico}</td>
-                    <td style="padding: 12px 10px; font-weight: 500;">x${cuotaDec.toFixed(2)} (${decimalToAmerican(cuotaDec)})</td>
+                    <td style="padding: 12px 10px; font-weight: 500;">${formatOdds(cuotaDec)}</td>
                     <td style="padding: 12px 10px; text-align: center;">${p.probabilidad_estadistica}%</td>
                     <td style="padding: 12px 10px; text-align: center;">${p.probabilidad_implicita}%</td>
                     <td style="padding: 12px 10px; color: var(--accent-green); font-weight: 600;">${p.valor}</td>
                     <td style="padding: 12px 10px; color: var(--text-secondary);">${p.tipo_parley}</td>
-                    <td style="padding: 12px 10px;"><span class="${badgeState}" style="${stateStyle}">${p.estado}</span></td>
+                    <td style="padding: 12px 10px;"><span class="${badgeClass}" style="${stateStyle}"><span class="pulse-dot ${dotColor}"></span>${p.estado}</span></td>
                     <td style="padding: 12px 10px; font-weight: 700; color: var(--accent-purple);">${p.resultado_partido || "-"}</td>
                 `;
                 predictionsTbody.appendChild(tr);
@@ -735,9 +902,34 @@ document.addEventListener("DOMContentLoaded", async () => {
         } else {
             predictionsTbody.innerHTML = `
                 <tr>
-                    <td colspan="10" class="loading-text" style="text-align: center; padding: 20px;">No hay predicciones registradas en la base de datos.</td>
+                    <td colspan="10" class="loading-text" style="text-align: center; padding: 20px;">No se encontraron predicciones con los filtros aplicados.</td>
                 </tr>
             `;
+        }
+    };
+
+    const setupPredFilters = () => {
+        const searchInput = document.getElementById("search-prediccion");
+        const filterStatus = document.getElementById("filter-prediccion-estado");
+        const filterType = document.getElementById("filter-prediccion-tipo");
+        
+        if (searchInput) {
+            searchInput.addEventListener("input", () => {
+                predictionsCurrentPage = 1;
+                renderPredictionsTable();
+            });
+        }
+        if (filterStatus) {
+            filterStatus.addEventListener("change", () => {
+                predictionsCurrentPage = 1;
+                renderPredictionsTable();
+            });
+        }
+        if (filterType) {
+            filterType.addEventListener("change", () => {
+                predictionsCurrentPage = 1;
+                renderPredictionsTable();
+            });
         }
     };
 
@@ -889,10 +1081,12 @@ document.addEventListener("DOMContentLoaded", async () => {
             let leftBorderColor = "var(--text-muted)";
             let profitText = "";
             let profitClass = "";
+            let dotColor = "purple";
             
             if (isGanada) {
-                statusBadgeHtml = `<span class="badge-status">✅ Ganada</span>`;
+                statusBadgeHtml = `<span class="badge-status"><span class="pulse-dot green"></span>Ganada</span>`;
                 leftBorderColor = "var(--accent-green)";
+                dotColor = "green";
                 if (tkt.isSuggestedOnly) {
                     profitText = `Retroalimentación: <b style="color: var(--accent-green);">Sugerencia Acertada</b>`;
                 } else {
@@ -901,8 +1095,9 @@ document.addEventListener("DOMContentLoaded", async () => {
                 }
                 profitClass = "color: var(--accent-green);";
             } else if (isPerdida) {
-                statusBadgeHtml = `<span class="badge-status arriesgada">❌ Perdida</span>`;
+                statusBadgeHtml = `<span class="badge-status arriesgada"><span class="pulse-dot red"></span>Perdida</span>`;
                 leftBorderColor = "var(--accent-red)";
+                dotColor = "red";
                 if (tkt.isSuggestedOnly) {
                     profitText = `Retroalimentación: <b style="color: var(--accent-red);">Sugerencia Fallada</b>`;
                 } else {
@@ -910,8 +1105,9 @@ document.addEventListener("DOMContentLoaded", async () => {
                 }
                 profitClass = "color: var(--accent-red);";
             } else if (isAnulada) {
-                statusBadgeHtml = `<span class="badge-status" style="background: rgba(156,163,175,0.2); color: #9ca3af;">🔄 Anulada</span>`;
+                statusBadgeHtml = `<span class="badge-status" style="background: rgba(156,163,175,0.2); color: #9ca3af;"><span class="pulse-dot purple"></span>Anulada</span>`;
                 leftBorderColor = "var(--text-muted)";
+                dotColor = "purple";
                 if (tkt.isSuggestedOnly) {
                     profitText = `Retroalimentación: <b style="color: #9ca3af;">Sugerencia Anulada</b>`;
                 } else {
@@ -919,8 +1115,9 @@ document.addEventListener("DOMContentLoaded", async () => {
                 }
                 profitClass = "color: var(--text-secondary);";
             } else {
-                statusBadgeHtml = `<span class="badge-status" style="background: rgba(14,165,233,0.2); color: var(--accent-blue);">⏳ Pendiente</span>`;
+                statusBadgeHtml = `<span class="badge-status" style="background: rgba(14,165,233,0.2); color: var(--accent-blue);"><span class="pulse-dot blue"></span>Pendiente</span>`;
                 leftBorderColor = "var(--accent-blue)";
+                dotColor = "blue";
                 if (tkt.isSuggestedOnly) {
                     profitText = `Retroalimentación: <b style="color: var(--accent-blue);">Pendiente</b>`;
                 } else {
@@ -929,7 +1126,6 @@ document.addEventListener("DOMContentLoaded", async () => {
                 profitClass = "color: var(--accent-blue);";
             }
             
-            // Título y borde según si fue jugado o sólo sugerido
             let cardTitle = "";
             let extraBadgeHtml = "";
             let borderStyle = "solid";
@@ -980,7 +1176,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                     <div class="sel-item" style="border-bottom: 1px solid rgba(255,255,255,0.02); padding-bottom: 8px; margin-bottom: 8px;">
                         <div style="display: flex; flex-direction: column; gap: 2px;">
                             <span class="sel-match" style="font-weight: 600; color: var(--text-primary);">${sel.partido}${scoreStr}</span>
-                            <span class="sel-pick" style="font-size: 0.8rem; color: var(--text-secondary);">${sel.pronostico} (<b>x${cuotaDec.toFixed(2)} / ${decimalToAmerican(cuotaDec)}</b>)</span>
+                            <span class="sel-pick" style="font-size: 0.8rem; color: var(--text-secondary);">${sel.pronostico} (<b>${formatOdds(cuotaDec)}</b>)</span>
                         </div>
                         <div style="align-self: center; font-size: 0.85rem;">
                             ${selBadge}
@@ -994,7 +1190,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             html += `
                     </div>
                     <div class="ticket-footer" style="background: rgba(255,255,255,0.01); border-top: 1px dashed rgba(255,255,255,0.05); padding-top: 12px; margin-top: 12px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
-                        <span class="ticket-meta">Inversión: ${inversionStr} | Cuota Combinada: <b>x${tkt.cuota.toFixed(2)} (${decimalToAmerican(tkt.cuota)})</b></span>
+                        <span class="ticket-meta">Inversión: ${inversionStr} | Cuota Combinada: <b>${formatOdds(tkt.cuota)}</b></span>
                         <span class="ticket-odds" style="${profitClass}">${profitText}</span>
                     </div>
                 </div>
@@ -1014,15 +1210,15 @@ document.addEventListener("DOMContentLoaded", async () => {
 
             if (res.ok) {
                 const resJson = await res.json();
-                alert(`🎉 ${resJson.message}`);
+                showToast(resJson.message, "success");
                 await cargarYRenderizar();
             } else {
                 const err = await res.text();
-                alert("❌ Error al liquidar ticket: " + err);
+                showToast("Error al liquidar ticket: " + err, "error");
             }
         } catch (err) {
             console.error(err);
-            alert("❌ Error al comunicarse con el servidor.");
+            showToast("Error al comunicarse con el servidor.", "error");
         }
     };
 
@@ -1032,7 +1228,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
         
-        // Destruir instancia previa si existe para evitar problemas de redibujado
         if (window.growthChartInstance) {
             window.growthChartInstance.destroy();
         }
@@ -1043,7 +1238,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         
         if (dataBanca && dataBanca.apuestas_archivadas) {
             let bancaAcumulada = 10.0;
-            // Ordenar del más antiguo al más nuevo
             const archivadasOrdenadas = [...dataBanca.apuestas_archivadas].sort((a,b) => a.ticket_id.localeCompare(b.ticket_id));
             
             archivadasOrdenadas.forEach((tkt, idx) => {
@@ -1057,34 +1251,58 @@ document.addEventListener("DOMContentLoaded", async () => {
             });
         }
 
-        const targetLine = Array(labels.length).fill(100.0);
+        // Unir etiquetas de simulación si existen
+        let finalLabels = [...labels];
+        if (window.projectedLabels && window.projectedLabels.length > 0) {
+            finalLabels = finalLabels.concat(window.projectedLabels);
+        }
+
+        const targetLine = Array(finalLabels.length).fill(100.0);
+
+        const datasets = [
+            {
+                label: 'Mi Banca ($)',
+                data: chartData,
+                borderColor: '#0ea5e9',
+                backgroundColor: 'rgba(14, 165, 233, 0.15)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.3,
+                pointRadius: 4,
+                pointBackgroundColor: '#0ea5e9'
+            },
+            {
+                label: 'Objetivo Final ($100)',
+                data: targetLine,
+                borderColor: 'rgba(239, 68, 68, 0.4)',
+                borderDash: [5, 5],
+                borderWidth: 1.5,
+                fill: false,
+                pointRadius: 0
+            }
+        ];
+
+        // Rellenar curva de proyección si fue calculada
+        if (window.projectedSeries && window.projectedSeries.length > 0) {
+            datasets.push({
+                label: 'Proyección Simulada ($)',
+                data: window.projectedSeries,
+                borderColor: '#8b5cf6',
+                borderDash: [4, 4],
+                backgroundColor: 'rgba(139, 92, 246, 0.04)',
+                borderWidth: 2,
+                fill: false,
+                tension: 0.3,
+                pointRadius: 2.5,
+                pointBackgroundColor: '#8b5cf6'
+            });
+        }
 
         window.growthChartInstance = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: labels,
-                datasets: [
-                    {
-                        label: 'Mi Banca ($)',
-                        data: chartData,
-                        borderColor: '#0ea5e9',
-                        backgroundColor: 'rgba(14, 165, 233, 0.15)',
-                        borderWidth: 3,
-                        fill: true,
-                        tension: 0.3,
-                        pointRadius: 4,
-                        pointBackgroundColor: '#0ea5e9'
-                    },
-                    {
-                        label: 'Objetivo Final ($100)',
-                        data: targetLine,
-                        borderColor: 'rgba(239, 68, 68, 0.4)',
-                        borderDash: [5, 5],
-                        borderWidth: 1.5,
-                        fill: false,
-                        pointRadius: 0
-                    }
-                ]
+                labels: finalLabels,
+                datasets: datasets
             },
             options: {
                 responsive: true,
@@ -1111,6 +1329,148 @@ document.addEventListener("DOMContentLoaded", async () => {
         });
     };
 
+    // --- SIMULADOR DE PROYECCIONES ---
+    const setupSimulator = () => {
+        const btnSimular = document.getElementById("btn-simular");
+        const inputYield = document.getElementById("sim-yield");
+        const inputTickets = document.getElementById("sim-tickets");
+        
+        if (!btnSimular) return;
+        
+        btnSimular.addEventListener("click", () => {
+            const yieldVal = parseFloat(inputYield.value);
+            const numTickets = parseInt(inputTickets.value);
+            
+            if (isNaN(yieldVal) || isNaN(numTickets) || numTickets <= 0) {
+                showToast("Por favor introduce valores de simulación válidos.", "error");
+                return;
+            }
+            
+            // Simular a partir de la banca acumulada actual en el historial real
+            let bancaAcumulada = 10.0;
+            const labelsCount = window.growthChartInstance ? window.growthChartInstance.data.labels.length : 1;
+            
+            if (dataBanca && dataBanca.apuestas_archivadas) {
+                const archivadasOrdenadas = [...dataBanca.apuestas_archivadas].sort((a,b) => a.ticket_id.localeCompare(b.ticket_id));
+                let tempBanca = 10.0;
+                archivadasOrdenadas.forEach((tkt) => {
+                    if (tkt.estado === "Ganada") {
+                        tempBanca += (tkt.retorno_realizado - tkt.inversion);
+                    } else if (tkt.estado === "Perdida") {
+                        tempBanca -= tkt.inversion;
+                    }
+                });
+                bancaAcumulada = tempBanca;
+            }
+            
+            // Stake promedio de $1.00 USD por parley
+            const avgStake = 1.00;
+            const yieldFactor = yieldVal / 100.0;
+            
+            const projectionPoints = Array(labelsCount).fill(null);
+            // El último punto real es el origen de la línea de proyección
+            projectionPoints[labelsCount - 1] = parseFloat(bancaAcumulada.toFixed(2));
+            
+            let simBanca = bancaAcumulada;
+            const newLabels = [];
+            
+            for (let i = 1; i <= numTickets; i++) {
+                simBanca += (avgStake * yieldFactor);
+                projectionPoints.push(parseFloat(simBanca.toFixed(2)));
+                newLabels.push(`SIM ${i}`);
+            }
+            
+            window.projectedLabels = newLabels;
+            window.projectedSeries = projectionPoints;
+            
+            renderChart();
+            showToast(`Simulación completada. Proyección final: $${simBanca.toFixed(2)} USD`, "success");
+        });
+    };
+
+    // --- CARGAR Y RENDERIZAR LOGS DE AUDITORÍA ---
+    const cargarYRenderizarLogsIA = async () => {
+        const container = document.getElementById("admin-logs-container");
+        if (!container) return;
+        
+        try {
+            const res = await fetch("/api/debug/full_logs");
+            if (!res.ok) throw new Error("Status " + res.status);
+            
+            const logData = await res.json();
+            const logs = logData.logs || [];
+            
+            container.innerHTML = "";
+            
+            if (logs.length === 0) {
+                container.innerHTML = `<p class="loading-text">No hay logs de auditoría en la base de datos.</p>`;
+                return;
+            }
+            
+            logs.forEach(log => {
+                const item = document.createElement("div");
+                item.className = "log-accordion-item";
+                
+                const fechaFmt = new Date(log.fecha).toLocaleString("es-ES");
+                const stateText = log.exito ? "ÉXITO" : "FALLO";
+                const stateClass = log.exito ? "success" : "fail";
+                
+                let formattedJson = "Sin resultado";
+                if (log.json_resultado) {
+                    try {
+                        const parsed = JSON.parse(log.json_resultado);
+                        formattedJson = JSON.stringify(parsed, null, 2);
+                    } catch (e) {
+                        formattedJson = log.json_resultado;
+                    }
+                }
+                
+                item.innerHTML = `
+                    <div class="log-accordion-header">
+                        <div class="log-header-info">
+                            <span class="log-status-badge ${stateClass}">${stateText}</span>
+                            <span class="log-date">${fechaFmt}</span>
+                        </div>
+                        <span class="log-arrow">▼</span>
+                    </div>
+                    <div class="log-accordion-body">
+                        <div class="log-block">
+                            <h4>Detalles</h4>
+                            <p style="font-size: 0.9rem; line-height: 1.45; color: var(--text-secondary);">${log.detalles || "N/A"}</p>
+                        </div>
+                        <div class="log-block">
+                            <h4>Prompt Utilizado</h4>
+                            <pre>${log.prompt_usado || "N/A"}</pre>
+                        </div>
+                        <div class="log-block">
+                            <h4>JSON Resultado</h4>
+                            <pre>${formattedJson}</pre>
+                        </div>
+                    </div>
+                `;
+                
+                const header = item.querySelector(".log-accordion-header");
+                const body = item.querySelector(".log-accordion-body");
+                
+                header.addEventListener("click", () => {
+                    const isOpen = body.classList.contains("open");
+                    container.querySelectorAll(".log-accordion-body").forEach(el => el.classList.remove("open"));
+                    container.querySelectorAll(".log-accordion-header").forEach(el => el.classList.remove("active"));
+                    
+                    if (!isOpen) {
+                        body.classList.add("open");
+                        header.classList.add("active");
+                    }
+                });
+                
+                container.appendChild(item);
+            });
+        } catch (e) {
+            console.error("Error al cargar logs:", e);
+            container.innerHTML = `<p class="loading-text" style="color: var(--accent-red);">❌ Error al cargar logs de auditoría: ${e.message}</p>`;
+        }
+    };
+
     // --- ELEMENTOS INTERACTIVOS: BANCA Y MARCADORES ---
     const setupInteractiveElements = () => {
         if (formAjusteBanca) {
@@ -1121,7 +1481,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 const desc = document.getElementById("ajuste-desc").value.trim();
 
                 if (isNaN(monto) || monto <= 0) {
-                    alert("❌ Por favor ingresa un monto válido mayor a cero.");
+                    showToast("Por favor ingresa un monto válido mayor a cero.", "error");
                     return;
                 }
 
@@ -1139,16 +1499,16 @@ document.addEventListener("DOMContentLoaded", async () => {
 
                     if (res.ok) {
                         const resJson = await res.json();
-                        alert(`🎉 ${resJson.message}`);
+                        showToast(resJson.message, "success");
                         formAjusteBanca.reset();
                         await cargarYRenderizar();
                     } else {
                         const err = await res.text();
-                        alert(`❌ Error al ajustar banca: ${err}`);
+                        showToast(`Error al ajustar banca: ${err}`, "error");
                     }
                 } catch (err) {
                     console.error(err);
-                    alert("❌ Error de comunicación con la API.");
+                    showToast("Error de comunicación con la API.", "error");
                 } finally {
                     btnSubmit.textContent = originalText;
                     btnSubmit.disabled = false;
@@ -1182,19 +1542,31 @@ document.addEventListener("DOMContentLoaded", async () => {
                         } else {
                             msg += "🤖 Sin predicciones liquidadas.\n";
                         }
-                        alert(`🔄 ${msg}`);
+                        showToast(msg.replace(/\n/g, ' '), "success");
                         await cargarYRenderizar();
                     } else {
                         const err = await res.text();
-                        alert(`❌ Error al actualizar marcadores: ${err}`);
+                        showToast(`Error al actualizar marcadores: ${err}`, "error");
                     }
                 } catch (err) {
                     console.error(err);
-                    alert("❌ Error de comunicación con la API de actualización.");
+                    showToast("Error de comunicación con la API de actualización.", "error");
                 } finally {
                     btnActualizarResultados.textContent = originalText;
                     btnActualizarResultados.disabled = false;
                 }
+            });
+        }
+
+        const btnRefrescarLogs = document.getElementById("btn-refrescar-logs");
+        if (btnRefrescarLogs) {
+            btnRefrescarLogs.addEventListener("click", async () => {
+                btnRefrescarLogs.textContent = "⏳ Cargando...";
+                btnRefrescarLogs.disabled = true;
+                await cargarYRenderizarLogsIA();
+                btnRefrescarLogs.textContent = "🔄 Recargar Logs";
+                btnRefrescarLogs.disabled = false;
+                showToast("Logs de auditoría actualizados.", "success");
             });
         }
     };
@@ -1234,8 +1606,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // --- INICIALIZACIÓN ---
     setupTabs();
+    setupOddsToggle();
     setupParleyFilters();
+    setupPredFilters();
     setupForm();
+    setupSimulator();
     setupInteractiveElements();
     setupPagination();
     await cargarYRenderizar();

@@ -10,12 +10,7 @@ import json
 import urllib.request
 import urllib.parse
 import sys
-
-# Reconfigurar salida estándar para evitar errores de codificación con emojis en Windows
-if hasattr(sys.stdout, 'reconfigure'):
-    sys.stdout.reconfigure(encoding='utf-8')
-if hasattr(sys.stderr, 'reconfigure'):
-    sys.stderr.reconfigure(encoding='utf-8')
+import src.config.encoding  # noqa: F401 — Centraliza reconfigure de stdout/stderr UTF-8
 
 def normalizar_equipo(nombre):
     if not nombre:

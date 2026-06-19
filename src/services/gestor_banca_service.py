@@ -20,12 +20,7 @@ from sqlalchemy.orm import selectinload
 from src.config.settings import Settings
 from src.database.session import async_session_maker, init_db
 from src.database.models import Usuario, Evento, Ticket, TicketSeleccion, Transaccion
-
-# Reconfigurar salida estándar para evitar errores de codificación con emojis en Windows
-if hasattr(sys.stdout, 'reconfigure'):
-    sys.stdout.reconfigure(encoding='utf-8')
-if hasattr(sys.stderr, 'reconfigure'):
-    sys.stderr.reconfigure(encoding='utf-8')
+import src.config.encoding  # noqa: F401 — Centraliza reconfigure de stdout/stderr UTF-8
 
 
 def run_async(coro):

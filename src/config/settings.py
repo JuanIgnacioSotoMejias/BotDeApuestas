@@ -20,6 +20,10 @@ class Settings:
     API_FOOTBALL_KEY = None
     API_FOOTBALL_URL = "https://v3.football.api-sports.io"
     THE_ODDS_API_KEY = None
+    SCHEDULER_ENABLED = True
+    SCHEDULER_HOUR = 8
+    SCHEDULER_MINUTE = 0
+    SCHEDULER_TIMEZONE_OFFSET = -4  # UTC-4 (Hora del Este)
     
     @classmethod
     def load(cls):
@@ -60,6 +64,14 @@ class Settings:
                             cls.API_FOOTBALL_URL = val
                         elif key.strip() == "THE_ODDS_API_KEY":
                             cls.THE_ODDS_API_KEY = val
+                        elif key.strip() == "SCHEDULER_ENABLED":
+                            cls.SCHEDULER_ENABLED = val.lower() in ("true", "1", "yes", "si", "sí")
+                        elif key.strip() == "SCHEDULER_HOUR":
+                            cls.SCHEDULER_HOUR = int(val)
+                        elif key.strip() == "SCHEDULER_MINUTE":
+                            cls.SCHEDULER_MINUTE = int(val)
+                        elif key.strip() == "SCHEDULER_TIMEZONE_OFFSET":
+                            cls.SCHEDULER_TIMEZONE_OFFSET = int(val)
                         elif key.strip() == "DATABASE_URL":
                             if val.startswith("postgresql://"):
                                 val = val.replace("postgresql://", "postgresql+asyncpg://", 1)
@@ -109,6 +121,32 @@ class Settings:
                 cls.TELEGRAM_ADMIN_IDS = [int(cls.TELEGRAM_CHAT_ID)]
             except Exception:
                 pass
+
+    @classmethod
+    def jugadas_path(cls, fecha=None):
+        """Retorna la ruta del archivo de jugadas para una fecha dada (default: hoy).
+        Formato: jugadas_YYYY-MM-DD.json
+        """
+        import datetime
+        if fecha is None:
+            fecha = datetime.date.today().strftime("%Y-%m-%d")
+        return os.path.join(cls.BASE_DIR, f"jugadas_{fecha}.json")
+
+    @classmethod
+    def jugadas_path_mas_reciente(cls):
+        """Busca el archivo de jugadas más reciente en el directorio raíz.
+        Retorna la ruta del archivo más reciente o None si no existe ninguno.
+        """
+        import glob
+        patron = os.path.join(cls.BASE_DIR, "jugadas_*.json")
+        archivos = glob.glob(patron)
+        if not archivos:
+            # Fallback al nombre legacy por compatibilidad
+            legacy = os.path.join(cls.BASE_DIR, "jugadas_lunes_15.json")
+            return legacy if os.path.exists(legacy) else None
+        # Ordenar por nombre (YYYY-MM-DD ordena lexicográficamente)
+        archivos.sort(reverse=True)
+        return archivos[0]
 
 
 # Cargar inmediatamente al importar
