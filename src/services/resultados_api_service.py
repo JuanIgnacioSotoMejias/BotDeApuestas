@@ -16,14 +16,19 @@ def normalizar_equipo(nombre):
     if not nombre:
         return ""
     import unicodedata
-    # Quitar tildes y diacríticos
+    # Quitar tildes y diacríticos y normalizar conectores comunes y guiones
     nombre_norm = "".join(
         c for c in unicodedata.normalize('NFD', nombre)
         if unicodedata.category(c) != 'Mn'
-    ).lower().strip()
+    ).lower().replace("&", "and").replace(" y ", " and ").replace("-", " ").strip()
     
     # Tabla de traducción manual de español e inglés a una clave única
     traducciones = {
+        "bosnia and herzegovina": "bosnia and herzegovina",
+        "bosnia & herzegovina": "bosnia and herzegovina",
+        "bosnia y herzegovina": "bosnia and herzegovina",
+        "bosnia herzegovina": "bosnia and herzegovina",
+        "bosnia": "bosnia and herzegovina",
         "espana": "spain",
         "cabo verde": "cape verde",
         "iran": "iran",
