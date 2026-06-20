@@ -39,6 +39,21 @@ class DashboardAPIHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        # API GET: Listar partidos disponibles para la quiniela
+        if self.path == "/api/quiniela/partidos":
+            try:
+                from src.services.quiniela_service import QuinielaService
+                q_srv = QuinielaService()
+                partidos = q_srv.obtener_partidos_disponibles()
+                
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": True, "partidos": partidos}, ensure_ascii=False).encode("utf-8"))
+            except Exception as e:
+                self.send_error(500, f"Error al cargar partidos de quiniela: {str(e)}")
+            return
+
         # API GET: Retornar historial completo de banca
         if self.path == "/api/banca":
             try:
@@ -212,6 +227,25 @@ class DashboardAPIHandler(BaseHTTPRequestHandler):
             body = json.loads(post_data) if post_data.strip() else {}
         except Exception:
             self.send_error(400, "Cuerpo de petición no es un JSON válido.")
+            return
+
+        # API POST: Calcular combinaciones más probables de quiniela
+        if self.path == "/api/quiniela/calcular":
+            partidos = body.get("partidos")
+            if not partidos:
+                self.send_error(400, "Falta el campo 'partidos' en el cuerpo del JSON.")
+                return
+            try:
+                from src.services.quiniela_service import QuinielaService
+                q_srv = QuinielaService()
+                resultado = q_srv.calcular_quiniela(partidos)
+                
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": True, "data": resultado}, ensure_ascii=False).encode("utf-8"))
+            except Exception as e:
+                self.send_error(500, f"Error al calcular la quiniela: {str(e)}")
             return
 
         # API POST: Colocación de apuesta interactiva

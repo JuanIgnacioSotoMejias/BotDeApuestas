@@ -14,16 +14,28 @@ document.addEventListener("DOMContentLoaded", async () => {
     const containerPicks = document.getElementById("active-picks-container");
     const containerSettled = document.getElementById("settled-tickets-container");
     
-    // Elementos de la vista Admin/Predicciones
+    // Elementos de la vista Admin/Predicciones/Quiniela
     const panelVisual = document.getElementById("visual-panel");
     const panelParleys = document.getElementById("parleys-panel");
     const panelPredictions = document.getElementById("predictions-panel");
+    const panelQuiniela = document.getElementById("quiniela-panel");
     const panelAdmin = document.getElementById("admin-panel");
     
     const tabVisualBtn = document.getElementById("tab-btn-visual");
     const tabParleysBtn = document.getElementById("tab-btn-parleys");
     const tabPredictionsBtn = document.getElementById("tab-btn-predictions");
+    const tabQuinielaBtn = document.getElementById("tab-btn-quiniela");
     const tabAdminBtn = document.getElementById("tab-btn-admin");
+
+    // Elementos de Quiniela IA
+    const containerQuinielaMatches = document.getElementById("quiniela-matches-list");
+    const btnCalcularQuiniela = document.getElementById("btn-calcular-quiniela");
+    const containerQuinielaCombinations = document.getElementById("quiniela-combinations-container");
+    const quinielaIndividualTbody = document.getElementById("quiniela-individual-tbody");
+    const btnRecargarPartidosQuiniela = document.getElementById("btn-recargar-partidos-quiniela");
+    const inputManualLocal = document.getElementById("manual-local");
+    const inputManualVisitante = document.getElementById("manual-visitante");
+    const btnAddManualMatch = document.getElementById("btn-add-manual-match");
     
     const containerParleysHistory = document.getElementById("parleys-history-container");
     let parleyFilter = "all";
@@ -200,6 +212,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             { btn: tabVisualBtn, panel: panelVisual },
             { btn: tabParleysBtn, panel: panelParleys },
             { btn: tabPredictionsBtn, panel: panelPredictions },
+            { btn: tabQuinielaBtn, panel: panelQuiniela },
             { btn: tabAdminBtn, panel: panelAdmin }
         ];
 
@@ -212,9 +225,11 @@ document.addEventListener("DOMContentLoaded", async () => {
                 tab.btn.classList.add("active");
                 tab.panel.style.display = "grid";
                 
-                // Cargar logs al entrar a Admin
+                // Acciones específicas de pestañas
                 if (tab.btn === tabAdminBtn) {
                     cargarYRenderizarLogsIA();
+                } else if (tab.btn === tabQuinielaBtn) {
+                    cargarPartidosQuiniela();
                 }
             });
         });
@@ -1604,6 +1619,229 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     };
 
+    // --- LÓGICA DE QUINIELA IA ---
+    let listadoPartidosQuiniela = [];
+
+    const cargarPartidosQuiniela = async () => {
+        if (!containerQuinielaMatches) return;
+        containerQuinielaMatches.innerHTML = `<p class="loading-text">⏳ Cargando partidos de la Copa del Mundo...</p>`;
+        
+        try {
+            const res = await fetch("/api/quiniela/partidos");
+            if (!res.ok) throw new Error("HTTP Status " + res.status);
+            const data = await res.json();
+            
+            const manualesPrevios = listadoPartidosQuiniela.filter(p => p.fuente === "Manual");
+            
+            listadoPartidosQuiniela = data.partidos.map(p => ({
+                home: p.home,
+                away: p.away,
+                fuente: p.fuente,
+                checked: true
+            }));
+            
+            listadoPartidosQuiniela = listadoPartidosQuiniela.concat(manualesPrevios);
+            renderizarPartidosQuiniela();
+        } catch (e) {
+            console.error(e);
+            containerQuinielaMatches.innerHTML = `<p class="loading-text" style="color: var(--accent-red);">❌ Error al cargar partidos de la API. Puedes agregarlos manualmente abajo.</p>`;
+        }
+    };
+
+    const renderizarPartidosQuiniela = () => {
+        containerQuinielaMatches.innerHTML = "";
+        
+        if (listadoPartidosQuiniela.length === 0) {
+            containerQuinielaMatches.innerHTML = `<p class="loading-text">💡 No hay partidos configurados. Añade partidos manuales abajo.</p>`;
+            return;
+        }
+        
+        listadoPartidosQuiniela.forEach((p, idx) => {
+            const div = document.createElement("div");
+            div.className = "quiniela-match-select-item";
+            
+            const isManual = p.fuente === "Manual";
+            const deleteBtnHtml = isManual ? `<button class="quiniela-manual-delete-btn" data-index="${idx}" title="Eliminar partido">🗑️</button>` : "";
+            
+            div.innerHTML = `
+                <div style="display: flex; align-items: center; flex: 1;">
+                    <input type="checkbox" class="quiniela-match-checkbox" data-index="${idx}" ${p.checked ? 'checked' : ''}>
+                    <span class="quiniela-match-info">${p.home} vs ${p.away}</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="quiniela-match-source">${p.fuente}</span>
+                    ${deleteBtnHtml}
+                </div>
+            `;
+            
+            div.querySelector(".quiniela-match-checkbox").addEventListener("change", (e) => {
+                listadoPartidosQuiniela[idx].checked = e.target.checked;
+            });
+            
+            if (isManual) {
+                div.querySelector(".quiniela-manual-delete-btn").addEventListener("click", () => {
+                    listadoPartidosQuiniela.splice(idx, 1);
+                    renderizarPartidosQuiniela();
+                });
+            }
+            
+            containerQuinielaMatches.appendChild(div);
+        });
+    };
+
+    const setupQuiniela = () => {
+        if (btnRecargarPartidosQuiniela) {
+            btnRecargarPartidosQuiniela.addEventListener("click", cargarPartidosQuiniela);
+        }
+        
+        if (btnAddManualMatch) {
+            btnAddManualMatch.addEventListener("click", () => {
+                const local = inputManualLocal.value.trim();
+                const visitante = inputManualVisitante.value.trim();
+                
+                if (!local || !visitante) {
+                    showToast("Por favor escribe el nombre de ambos equipos.", "error");
+                    return;
+                }
+                
+                const existe = listadoPartidosQuiniela.some(p => 
+                    p.home.toLowerCase() === local.toLowerCase() && p.away.toLowerCase() === visitante.toLowerCase()
+                );
+                
+                if (existe) {
+                    showToast("Este partido ya está en la lista.", "error");
+                    return;
+                }
+                
+                listadoPartidosQuiniela.push({
+                    home: local,
+                    away: visitante,
+                    fuente: "Manual",
+                    checked: true
+                });
+                
+                inputManualLocal.value = "";
+                inputManualVisitante.value = "";
+                
+                renderizarPartidosQuiniela();
+                showToast(`Partido manual añadido: ${local} vs ${visitante}`, "success");
+            });
+        }
+        
+        if (btnCalcularQuiniela) {
+            btnCalcularQuiniela.addEventListener("click", async () => {
+                const seleccionados = listadoPartidosQuiniela.filter(p => p.checked);
+                if (seleccionados.length === 0) {
+                    showToast("Debes seleccionar al menos un partido para analizar la quiniela.", "error");
+                    return;
+                }
+                
+                const originalText = btnCalcularQuiniela.textContent;
+                btnCalcularQuiniela.textContent = "⏳ Analizando Quiniela con IA...";
+                btnCalcularQuiniela.disabled = true;
+                
+                containerQuinielaCombinations.innerHTML = `<p class="loading-text">🧠 Analizando probabilidades y ejecutando optimización Dijkstra-heap...</p>`;
+                quinielaIndividualTbody.innerHTML = `<tr><td colspan="5" class="loading-text">Cargando desglose...</td></tr>`;
+                
+                try {
+                    const res = await fetch("/api/quiniela/calcular", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ partidos: seleccionados })
+                    });
+                    
+                    if (!res.ok) throw new Error("HTTP Status " + res.status);
+                    const resJson = await res.json();
+                    
+                    if (resJson.ok) {
+                        renderizarResultadosQuiniela(resJson.data);
+                        showToast("Quiniela analizada con éxito.", "success");
+                    } else {
+                        showToast("Error al analizar: " + resJson.error, "error");
+                    }
+                } catch (e) {
+                    console.error(e);
+                    showToast("Error al comunicarse con la API de cálculo.", "error");
+                    containerQuinielaCombinations.innerHTML = `<p class="loading-text" style="color: var(--accent-red);">❌ Error al calcular quiniela.</p>`;
+                } finally {
+                    btnCalcularQuiniela.textContent = originalText;
+                    btnCalcularQuiniela.disabled = false;
+                }
+            });
+        }
+    };
+
+    const renderizarResultadosQuiniela = (data) => {
+        containerQuinielaCombinations.innerHTML = "";
+        const combinaciones = data.top_combinaciones || [];
+        
+        if (combinaciones.length === 0) {
+            containerQuinielaCombinations.innerHTML = `<p class="loading-text">No se pudieron generar combinaciones.</p>`;
+            return;
+        }
+        
+        combinaciones.forEach(comb => {
+            const card = document.createElement("div");
+            card.className = "quiniela-combination-card";
+            
+            let badgeStyle = "background: rgba(16, 185, 129, 0.15); color: var(--accent-green);";
+            if (comb.id_comb === 2) badgeStyle = "background: rgba(14, 165, 233, 0.15); color: var(--accent-blue);";
+            if (comb.id_comb === 3) badgeStyle = "background: rgba(139, 92, 246, 0.15); color: var(--accent-purple);";
+            
+            let html = `
+                <div class="quiniela-combination-header">
+                    <h3>Ticket #${comb.id_comb}</h3>
+                    <span class="badge-status" style="${badgeStyle}">Prob: ${comb.probabilidad_conjunta}%</span>
+                </div>
+                <div class="quiniela-combination-selections">
+            `;
+            
+            comb.selections.forEach(sel => {
+                let outcomeBadgeColor = "var(--text-muted)";
+                if (sel.outcome === "1") outcomeBadgeColor = "var(--accent-blue)";
+                if (sel.outcome === "2") outcomeBadgeColor = "var(--accent-purple)";
+                
+                html += `
+                    <div class="quiniela-sel-row">
+                        <span class="quiniela-sel-match" style="text-align: left;">${sel.home} vs ${sel.away}</span>
+                        <span class="quiniela-sel-outcome" style="color: ${outcomeBadgeColor};">${sel.pronostico_desc} (${sel.probabilidad_individual}%)</span>
+                    </div>
+                `;
+            });
+            
+            html += `</div>`;
+            card.innerHTML = html;
+            containerQuinielaCombinations.appendChild(card);
+        });
+        
+        quinielaIndividualTbody.innerHTML = "";
+        const individuales = data.probabilidades_individuales || [];
+        
+        individuales.forEach(match => {
+            const tr = document.createElement("tr");
+            tr.style.borderBottom = "1px solid rgba(255, 255, 255, 0.05)";
+            
+            tr.innerHTML = `
+                <td style="padding: 12px 10px; font-weight: 600; text-align: left;">${match.home} vs ${match.away}</td>
+                <td style="padding: 12px 10px; text-align: center;">
+                    <div style="font-weight: 700; color: var(--accent-blue);">${match.prob_home}%</div>
+                    <div class="quiniela-probability-bar-container"><div class="quiniela-probability-bar home" style="width: ${match.prob_home}%"></div></div>
+                </td>
+                <td style="padding: 12px 10px; text-align: center;">
+                    <div style="font-weight: 700; color: var(--text-secondary);">${match.prob_draw}%</div>
+                    <div class="quiniela-probability-bar-container"><div class="quiniela-probability-bar draw" style="width: ${match.prob_draw}%"></div></div>
+                </td>
+                <td style="padding: 12px 10px; text-align: center;">
+                    <div style="font-weight: 700; color: var(--accent-purple);">${match.prob_away}%</div>
+                    <div class="quiniela-probability-bar-container"><div class="quiniela-probability-bar away" style="width: ${match.prob_away}%"></div></div>
+                </td>
+                <td style="padding: 12px 10px; color: var(--text-secondary); font-size: 0.85rem; text-align: left;">${match.fuente}</td>
+            `;
+            
+            quinielaIndividualTbody.appendChild(tr);
+        });
+    };
+
     // --- INICIALIZACIÓN ---
     setupTabs();
     setupOddsToggle();
@@ -1611,6 +1849,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     setupPredFilters();
     setupForm();
     setupSimulator();
+    setupQuiniela();
     setupInteractiveElements();
     setupPagination();
     await cargarYRenderizar();

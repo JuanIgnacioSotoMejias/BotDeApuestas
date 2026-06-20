@@ -1032,3 +1032,129 @@ body {
     box-shadow: 0 0 10px rgba(14, 165, 233, 0.15);
 }
 
+/* 🎟️ ESTILOS DE QUINIELA IA 🎟️ */
+.quiniela-matches-list {
+    border: 1px solid var(--card-border);
+    background: rgba(0, 0, 0, 0.15);
+    padding: 15px;
+    border-radius: 12px;
+}
+.quiniela-match-select-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid rgba(255, 255, 255, 0.03);
+    padding: 10px 14px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    margin-bottom: 8px;
+}
+.quiniela-match-select-item:last-child {
+    margin-bottom: 0;
+}
+.quiniela-match-select-item:hover {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(139, 92, 246, 0.2);
+}
+.quiniela-match-checkbox {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent-purple);
+    cursor: pointer;
+}
+.quiniela-match-info {
+    font-weight: 500;
+    font-size: 0.9rem;
+    flex: 1;
+    margin-left: 12px;
+    text-align: left;
+}
+.quiniela-match-source {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    background: rgba(255,255,255,0.03);
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+.quiniela-combination-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    transition: all 0.25s ease;
+}
+.quiniela-combination-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(139, 92, 246, 0.3);
+    box-shadow: 0 8px 20px rgba(139, 92, 246, 0.1);
+}
+.quiniela-combination-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+}
+.quiniela-combination-header h3 {
+    font-family: 'Outfit', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.quiniela-combination-selections {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.quiniela-sel-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    padding-bottom: 4px;
+}
+.quiniela-sel-match {
+    color: var(--text-secondary);
+}
+.quiniela-sel-outcome {
+    font-weight: 600;
+}
+.quiniela-probability-bar-container {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.04);
+    height: 6px;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 4px;
+}
+.quiniela-probability-bar {
+    height: 100%;
+    border-radius: 3px;
+}
+.quiniela-probability-bar.home {
+    background-color: var(--accent-blue);
+}
+.quiniela-probability-bar.draw {
+    background-color: var(--text-muted);
+}
+.quiniela-probability-bar.away {
+    background-color: var(--accent-purple);
+}
+.quiniela-manual-delete-btn {
+    background: transparent;
+    border: none;
+    color: var(--accent-red);
+    cursor: pointer;
+    font-size: 0.95rem;
+    padding: 0 6px;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+    margin-left: 10px;
+}
+.quiniela-manual-delete-btn:hover {
+    opacity: 1;
+}
+
+

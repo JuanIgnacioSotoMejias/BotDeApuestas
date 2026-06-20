@@ -128,7 +128,9 @@ class LLMService:
                     result = json.loads(response.read().decode("utf-8"))
                 
                 if "choices" in result and len(result["choices"]) > 0:
-                    content = result["choices"][0]["message"]["content"]
+                    content = result["choices"][0]["message"].get("content")
+                    if not content:
+                        content = ""
                     # Evitar respuestas vacías o tags de seguridad demasiado cortos de forma proactiva
                     if len(content.strip()) < 40 and ("safety" in content.lower() or "safe" in content.lower() or "polit" in content.lower()):
                         print(f"⚠️ LLMService: El modelo '{modelo}' retornó una respuesta de seguridad corta: '{content}'. Intentando siguiente modelo...")
@@ -231,3 +233,18 @@ class LLMService:
         except Exception as e:
             print(f"❌ LLMService (Gemini): Error de conexión: {e}")
             return "❌ Error de conexión al intentar consultar la predicción a Gemini."
+
+    def generar_texto_crudo(self, prompt):
+        """
+        Envía un prompt de forma directa al proveedor configurado,
+        sin inyectar las directrices de análisis de apuestas maestro.
+        """
+        if self.provider == "openrouter":
+            return self._analizar_openrouter(prompt)
+        elif self.provider == "ollama":
+            return self._analizar_ollama(prompt)
+        elif self.provider == "gemini":
+            return self._analizar_gemini(prompt)
+        else:
+            return self._retornar_prompt_manual(prompt)
+

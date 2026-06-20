@@ -87,6 +87,7 @@
             <button id="tab-btn-visual" class="tab-button active">📈 Panel Visual</button>
             <button id="tab-btn-parleys" class="tab-button">🎟️ Historial de Parleys</button>
             <button id="tab-btn-predictions" class="tab-button">🤖 Predicciones IA</button>
+            <button id="tab-btn-quiniela" class="tab-button">🎟️ Quiniela IA</button>
             <button id="tab-btn-admin" class="tab-button">⚙️ Consola Admin</button>
         </nav>
 
@@ -268,6 +269,84 @@
                         <span id="predictions-page-info" style="color: var(--text-secondary); font-size: 0.95rem; font-weight: 500;">Página 1 de 1</span>
                         <button id="predictions-next-btn" class="btn-secondary" style="padding: 8px 16px; font-weight: 500;">Siguiente ➡️</button>
                     </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- MAIN CONTENT AREA (QUINIELA IA PANEL) -->
+        <main id="quiniela-panel" class="dashboard-main" style="display: none;">
+            <!-- LEFT COLUMN: SELECCIÓN DE PARTIDOS -->
+            <div class="main-column">
+                <div class="panel-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-left: 3px solid var(--accent-purple); padding-left: 10px;">
+                        <h2 style="border-left: none; padding-left: 0; margin-bottom: 0;">🎟️ Configurar Quiniela</h2>
+                        <button type="button" id="btn-recargar-partidos-quiniela" class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem;">🔄 Recargar Partidos</button>
+                    </div>
+                    <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;">
+                        Selecciona los partidos disponibles o añade partidos de forma manual escribiendo sus nombres para realizar la combinación más probable.
+                    </p>
+                    
+                    <!-- Partidos del día -->
+                    <div class="quiniela-matches-list" id="quiniela-matches-list" style="max-height: 350px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; margin-bottom: 25px; padding-right: 5px;">
+                        <p class="loading-text">Cargando partidos de hoy...</p>
+                    </div>
+                    
+                    <!-- Agregar partido manual -->
+                    <div class="manual-match-add" style="background: rgba(255,255,255,0.01); border: 1px dashed var(--card-border); padding: 15px; border-radius: 12px; margin-bottom: 25px;">
+                        <h4 style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); margin-bottom: 10px;">➕ Añadir Partido Manual</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end;">
+                            <div class="form-group">
+                                <label style="font-size: 0.75rem; color: var(--text-secondary); text-align: left;">Equipo Local</label>
+                                <input type="text" id="manual-local" placeholder="Ej: Argentina" style="padding: 8px 12px; font-size: 0.85rem;">
+                            </div>
+                            <div class="form-group">
+                                <label style="font-size: 0.75rem; color: var(--text-secondary); text-align: left;">Equipo Visitante</label>
+                                <input type="text" id="manual-visitante" placeholder="Ej: Francia" style="padding: 8px 12px; font-size: 0.85rem;">
+                            </div>
+                            <button type="button" id="btn-add-manual-match" class="btn-primary" style="padding: 8px 16px; font-size: 0.85rem; height: 38px;">Añadir</button>
+                        </div>
+                    </div>
+
+                    <button id="btn-calcular-quiniela" class="btn-primary" style="width: 100%; background: linear-gradient(135deg, var(--accent-purple) 0%, #6d28d9 100%); box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);">🧠 Analizar Quiniela con IA</button>
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN: ANÁLISIS DE COMBINACIONES -->
+            <div class="main-column side-column" style="grid-column: span 1;">
+                <div class="panel-card" style="min-height: 100%;">
+                    <h2>📊 Probabilidades Resultantes</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.85rem;">
+                        Las 3 combinaciones con mayor probabilidad estadística de acierto ordenadas de mayor a menor:
+                    </p>
+                    <div id="quiniela-combinations-container" style="display: flex; flex-direction: column; gap: 20px;">
+                        <p class="loading-text" style="padding: 40px 0;">💡 Selecciona partidos y haz clic en "Analizar Quiniela con IA".</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- FULL WIDTH PROBABILITIES SHEET -->
+            <div class="panel-card" style="grid-column: 1 / -1; margin-top: 20px;" id="card-quiniela-individual-probs">
+                <h2>📈 Porcentajes de Probabilidad por Partido (1X2)</h2>
+                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 20px;">
+                    Desglose de probabilidades asignadas para cada uno de los partidos seleccionados (basado en cuotas o en estimación IA).
+                </p>
+                <div class="table-responsive" style="overflow-x: auto;">
+                    <table class="predictions-table" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem;">
+                        <thead>
+                            <tr style="border-bottom: 2px solid var(--card-border); color: var(--text-secondary);">
+                                <th style="padding: 12px 10px;">Partido</th>
+                                <th style="padding: 12px 10px; text-align: center;">Local (1)</th>
+                                <th style="padding: 12px 10px; text-align: center;">Empate (X)</th>
+                                <th style="padding: 12px 10px; text-align: center;">Visitante (2)</th>
+                                <th style="padding: 12px 10px;">Fuente del Análisis</th>
+                            </tr>
+                        </thead>
+                        <tbody id="quiniela-individual-tbody">
+                            <tr>
+                                <td colspan="5" class="loading-text" style="text-align: center; padding: 20px;">Aún no se ha realizado ningún análisis.</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </main>
