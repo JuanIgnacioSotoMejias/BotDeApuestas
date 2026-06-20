@@ -431,6 +431,7 @@ class PicksGeneratorService:
                 "- NO pongas 3 selecciones de cuota 1.80 en el arriesgado si la combinada no llega a 5.00x.\n"
                 "- NO selecciones partidos donde no tienes datos suficientes para estimar la probabilidad.\n"
                 "- NO repitas el mismo partido en ambos parleys.\n"
+                "- NO repitas el mismo partido múltiples veces dentro del mismo parley (no combines más de un mercado para el mismo encuentro en el mismo ticket).\n"
                 "- Si el historial previo muestra que un tipo de mercado ha fallado consistentemente, EVÍTALO.\n\n"
                 "=== REGLAS DE FORMATO (OBLIGATORIO) ===\n"
                 "1. Solo puedes pronosticar partidos de la lista de arriba. PROHIBIDO inventar partidos.\n"

@@ -76,6 +76,172 @@ class QuinielaService:
     def obtener_partidos_disponibles(self):
         return run_async(self.obtener_partidos_disponibles_async())
 
+    def obtener_contexto_partido(self, home, away):
+        """
+        Consulta ScoutAgent para obtener alineaciones, clima, lesiones, H2H, etc.
+        """
+        try:
+            from src.agents.scout_agent import ScoutAgent
+            scout = ScoutAgent()
+            consulta = f"{home} vs. {away}"
+            return scout.buscar_datos(consulta)
+        except Exception as e:
+            print(f"⚠️ QuinielaService: Error al invocar ScoutAgent: {e}")
+            return {}
+
+    def _formatear_partido_para_prompt(self, idx, p, cuotas, scout_info):
+        text = f"Partido #{idx + 1}: {p['home']} vs {p['away']}\n"
+        
+        # 1. Cuotas
+        if cuotas and cuotas.get("1X2_Home") and cuotas.get("1X2_Draw") and cuotas.get("1X2_Away"):
+            text += f"  - Cuotas de Referencia (1X2): Local {cuotas['1X2_Home']}, Empate {cuotas['1X2_Draw']}, Visitante {cuotas['1X2_Away']}\n"
+        else:
+            text += "  - Cuotas de Referencia: No disponibles.\n"
+            
+        # 2. Clima y Estado del campo (Estadio)
+        estadio = scout_info.get("estadio") or scout_info.get("estadio_detallado") or "Desconocido"
+        clima = scout_info.get("clima") or "Despejado / Condiciones Óptimas"
+        text += f"  - Estadio / Estado del Campo: {estadio}\n"
+        text += f"  - Clima: {clima}\n"
+        
+        # 3. Árbitro
+        arbitro = scout_info.get("arbitro") or "Desconocido"
+        text += f"  - Árbitro: {arbitro}\n"
+        
+        # 4. Alineaciones / Jugadores
+        alineaciones = scout_info.get("alineaciones") or scout_info.get("alineaciones_oficiales")
+        if alineaciones:
+            for team_info in alineaciones:
+                team_name = team_info.get("equipo")
+                formacion = team_info.get("formacion")
+                entrenador = team_info.get("entrenador")
+                titulares = ", ".join(team_info.get("titulares", [])) or "No disponibles"
+                text += f"  - Alineación {team_name} (Formación {formacion}, Entrenador {entrenador}): {titulares}\n"
+        else:
+            text += "  - Alineaciones / Posibles Titulares: No disponibles en API (asume posibles alineaciones titulares según tu base de conocimientos).\n"
+            
+        # 5. Bajas / Lesiones
+        bajas = scout_info.get("bajas") or scout_info.get("bajas_lesiones")
+        if bajas:
+            bajas_list = []
+            for b in bajas:
+                razon = b.get("razon", "Lesión o Sanción")
+                bajas_list.append(f"{b.get('jugador')} ({b.get('equipo')} - {razon})")
+            text += "  - Bajas / Lesionados: " + ", ".join(bajas_list) + "\n"
+        else:
+            text += "  - Bajas / Lesionados: Ninguna reportada o datos no disponibles.\n"
+            
+        # 6. Historial H2H
+        h2h = scout_info.get("h2h") or scout_info.get("h2h_historico")
+        if h2h:
+            if isinstance(h2h, list):
+                text += "  - Historial H2H reciente:\n"
+                for h in h2h[:4]:
+                    text += f"    * {h}\n"
+            else:
+                text += f"  - Historial H2H: {h2h}\n"
+        else:
+            text += "  - Historial H2H: No disponible.\n"
+            
+        return text
+
+    def estimar_probabilidades_ia_avanzada(self, partidos_seleccionados):
+        """
+        Realiza un análisis unificado usando el LLM sobre alineaciones, clima, bajas y H2H
+        para todos los partidos seleccionados.
+        """
+        partidos_txt_list = []
+        for idx, p in enumerate(partidos_seleccionados):
+            home = p["home"]
+            away = p["away"]
+            
+            # Obtener cuotas
+            cuotas = self.odds_api.obtener_cuotas_para_partido(home, away)
+            
+            # Obtener contexto
+            scout_info = self.obtener_contexto_partido(home, away)
+            
+            partidos_txt_list.append(self._formatear_partido_para_prompt(idx, p, cuotas, scout_info))
+            
+        partidos_txt = "\n\n".join(partidos_txt_list)
+        
+        prompt = (
+            f"Eres un Analista Cuantitativo de Apuestas Deportivas de élite y Científico de Datos Deportivo.\n"
+            f"Tu tarea es analizar los siguientes partidos de fútbol y estimar las probabilidades reales (Gana Local %, Empate %, Gana Visitante %) para el mercado 1X2.\n\n"
+            f"Para cada partido se te proveen datos en tiempo real (cuotas de referencia, estadio/campo, clima, árbitro, alineaciones/posibles titulares, bajas/lesiones e historial H2H).\n"
+            f"Deberás realizar un análisis profundo considerando cómo influyen las alineaciones (ej. debilidad en defensa, fortaleza ofensiva, ausencias clave), "
+            f"el estado del campo y el clima (ej. lluvia, calor extremo, altitud), las tendencias del árbitro y el historial H2H.\n\n"
+            f"--- DATOS DE LOS PARTIDOS ---\n"
+            f"{partidos_txt}\n\n"
+            f"Responde estrictamente en formato JSON. No incluyas explicaciones, introducciones ni bloques de markdown fuera del JSON. El formato debe ser exactamente:\n"
+            f'{{\n'
+            f'  "partidos": [\n'
+            f'    {{\n'
+            f'      "home": "Nombre Local",\n'
+            f'      "away": "Nombre Visitante",\n'
+            f'      "prob_home": 45.0,\n'
+            f'      "prob_draw": 30.0,\n'
+            f'      "prob_away": 25.0,\n'
+            f'      "analisis_contextual": "Explicación breve de 1-2 líneas sobre cómo influyen las alineaciones, clima, bajas y campo en tu predicción."\n'
+            f'    }}\n'
+            f'  ]\n'
+            f'}}\n\n'
+            f"IMPORTANTE: La suma de prob_home, prob_draw y prob_away para cada partido DEBE ser exactamente 100.0."
+        )
+
+        try:
+            if hasattr(self.llm, "generar_texto_crudo"):
+                response_text = self.llm.generar_texto_crudo(prompt)
+            else:
+                response_text = self.llm.analizar_partido(prompt)
+            
+            # Limpiar respuesta de markdown si el LLM lo incluyó
+            if "```" in response_text:
+                match = re.search(r'```(?:json)?\s*(.*?)\s*```', response_text, re.DOTALL)
+                if match:
+                    response_text = match.group(1)
+
+            res_json = json.loads(response_text)
+            estimados = res_json.get("partidos", [])
+            
+            resultados = []
+            for p in partidos_seleccionados:
+                est_p = next(
+                    (item for item in estimados if item.get("home", "").lower() == p["home"].lower() or item.get("away", "").lower() == p["away"].lower()),
+                    None
+                )
+                
+                if est_p:
+                    p_h = float(est_p.get("prob_home", 33.3))
+                    p_d = float(est_p.get("prob_draw", 33.4))
+                    p_a = float(est_p.get("prob_away", 33.3))
+                    analisis = est_p.get("analisis_contextual", "Análisis completado a partir de alineaciones, clima y bajas.")
+                    
+                    # Forzar suma a 100%
+                    total = p_h + p_d + p_a
+                    if total > 0:
+                        p_h = round((p_h / total) * 100, 2)
+                        p_d = round((p_d / total) * 100, 2)
+                        p_a = round((p_a / total) * 100, 2)
+                else:
+                    p_h, p_d, p_a = 33.33, 33.34, 33.33
+                    analisis = "Estimación automática equiprobable por ausencia de respuesta de IA."
+
+                resultados.append({
+                    "home": p["home"],
+                    "away": p["away"],
+                    "prob_home": p_h,
+                    "prob_draw": p_d,
+                    "prob_away": p_a,
+                    "fuente": "Análisis IA Contextual (Alineaciones, Clima, Bajas)",
+                    "analisis_contextual": analisis
+                })
+            return resultados
+
+        except Exception as e:
+            print(f"⚠️ QuinielaService: Error al estimar probabilidades contextuales con el LLM ({e}).")
+            return []
+
     def calcular_quiniela(self, partidos_seleccionados):
         """
         Calcula las 3 combinaciones de resultados 1X2 más probables para los partidos dados.
@@ -85,49 +251,46 @@ class QuinielaService:
         if not partidos_seleccionados:
             return {"top_combinaciones": [], "probabilidades_individuales": []}
 
-        # 1. Obtener probabilidades para cada partido
+        # 1. Estimar probabilidades con análisis contextual avanzado usando el LLM
         partidos_con_prob = []
-        partidos_sin_cuotas = []
-
-        for p in partidos_seleccionados:
-            home = p["home"]
-            away = p["away"]
+        try:
+            partidos_con_prob = self.estimar_probabilidades_ia_avanzada(partidos_seleccionados)
+        except Exception as e:
+            print(f"⚠️ QuinielaService: Error en estimar_probabilidades_ia_avanzada: {e}. Usando fallback.")
             
-            # Intentar obtener cuotas reales
-            cuotas = self.odds_api.obtener_cuotas_para_partido(home, away)
-            if cuotas and cuotas.get("1X2_Home") and cuotas.get("1X2_Draw") and cuotas.get("1X2_Away"):
-                # Calcular probabilidades implícitas
-                odd_h = float(cuotas["1X2_Home"])
-                odd_d = float(cuotas["1X2_Draw"])
-                odd_a = float(cuotas["1X2_Away"])
-                
-                ip_h = 1.0 / odd_h
-                ip_d = 1.0 / odd_d
-                ip_a = 1.0 / odd_a
-                
-                sum_ip = ip_h + ip_d + ip_a
-                
-                # Normalizar
-                p_h = round((ip_h / sum_ip) * 100, 2)
-                p_d = round((ip_d / sum_ip) * 100, 2)
-                p_a = round((ip_a / sum_ip) * 100, 2)
-                
-                partidos_con_prob.append({
-                    "home": home,
-                    "away": away,
-                    "prob_home": p_h,
-                    "prob_draw": p_d,
-                    "prob_away": p_a,
-                    "fuente": f"Odds API ({cuotas.get('bookmaker', 'Bet365')})"
-                })
-            else:
-                partidos_sin_cuotas.append(p)
-
-        # 2. Estimar con LLM los partidos sin cuota
-        if partidos_sin_cuotas:
-            estimaciones_ia = self.estimar_probabilidades_ia(partidos_sin_cuotas)
-            for est in estimaciones_ia:
-                partidos_con_prob.append(est)
+        # Si falló la estimación avanzada o retornó una lista incompleta, hacemos fallback manual
+        if len(partidos_con_prob) < len(partidos_seleccionados):
+            existentes = {f"{p['home'].lower()} vs {p['away'].lower()}" for p in partidos_con_prob}
+            for p in partidos_seleccionados:
+                key = f"{p['home'].lower()} vs {p['away'].lower()}"
+                if key not in existentes:
+                    # Intentar obtener cuotas como fallback directo
+                    home = p["home"]
+                    away = p["away"]
+                    cuotas = self.odds_api.obtener_cuotas_para_partido(home, away)
+                    if cuotas and cuotas.get("1X2_Home") and cuotas.get("1X2_Draw") and cuotas.get("1X2_Away"):
+                        odd_h = float(cuotas["1X2_Home"])
+                        odd_d = float(cuotas["1X2_Draw"])
+                        odd_a = float(cuotas["1X2_Away"])
+                        ip_h, ip_d, ip_a = 1.0 / odd_h, 1.0 / odd_d, 1.0 / odd_a
+                        sum_ip = ip_h + ip_d + ip_a
+                        p_h = round((ip_h / sum_ip) * 100, 2)
+                        p_d = round((ip_d / sum_ip) * 100, 2)
+                        p_a = round((ip_a / sum_ip) * 100, 2)
+                        fuente = f"Odds API ({cuotas.get('bookmaker', 'Bet365')}) [Fallback]"
+                    else:
+                        p_h, p_d, p_a = 33.33, 33.34, 33.33
+                        fuente = "Fallback por Defecto (Equiprobable)"
+                        
+                    partidos_con_prob.append({
+                        "home": home,
+                        "away": away,
+                        "prob_home": p_h,
+                        "prob_draw": p_d,
+                        "prob_away": p_a,
+                        "fuente": fuente,
+                        "analisis_contextual": "Análisis simplificado por falta de respuesta del modelo de IA principal."
+                    })
 
         # 3. Aplicar algoritmo Dijkstra de cola de prioridad para encontrar las Top 3 combinaciones
         # Aseguramos el orden de partidos_con_prob para coincidir con la selección original
@@ -135,7 +298,6 @@ class QuinielaService:
         partidos_con_prob.sort(key=lambda x: orden_dict.get(f"{x['home'].lower()} vs {x['away'].lower()}", 999))
 
         # Estructurar la entrada del algoritmo Dijkstra
-        # matches_probs = [{"1": pH, "X": pD, "2": pA}, ...]
         matches_probs = []
         for p in partidos_con_prob:
             matches_probs.append({
@@ -154,7 +316,6 @@ class QuinielaService:
                 match_p = partidos_con_prob[idx]
                 outcome = sel["outcome"]
                 
-                # Traducir marcador de 1, X, 2 a nombre descriptivo
                 pronostico_str = ""
                 if outcome == "1":
                     pronostico_str = f"Gana {match_p['home']}"
@@ -166,7 +327,7 @@ class QuinielaService:
                 ticket_selections.append({
                     "home": match_p["home"],
                     "away": match_p["away"],
-                    "outcome": outcome, # "1", "X", "2"
+                    "outcome": outcome,
                     "pronostico_desc": pronostico_str,
                     "probabilidad_individual": round(sel["prob"] * 100, 2)
                 })
@@ -184,7 +345,7 @@ class QuinielaService:
 
     def estimar_probabilidades_ia(self, partidos):
         """
-        Consulta al LLM para estimar las probabilidades de 1X2 para partidos sin cuotas.
+        Consulta al LLM para estimar las probabilidades de 1X2 para partidos sin cuotas (Legacy).
         """
         partidos_txt = "\n".join([f"- {p['home']} vs {p['away']}" for p in partidos])
         prompt = (

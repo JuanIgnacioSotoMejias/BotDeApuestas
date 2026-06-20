@@ -266,6 +266,21 @@ class DashboardAPIHandler(BaseHTTPRequestHandler):
                 self.send_error(400, "Inversión y Cuota deben ser números válidos.")
                 return
 
+            # Validar duplicados de partidos en la combinada
+            vistos = set()
+            for sel in selecciones:
+                p_norm = sel.get("partido", "").lower().replace(".", "").replace(" vs ", " vs. ").strip()
+                if p_norm in vistos:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "ok": False,
+                        "error": f"No se puede jugar el ticket. Hay selecciones duplicadas para el partido: {sel.get('partido')}"
+                    }).encode("utf-8"))
+                    return
+                vistos.add(p_norm)
+
             # Validar que ningún partido de la combinada haya finalizado en la BD de predicciones
             try:
                 from sqlalchemy import select
@@ -457,6 +472,32 @@ class DashboardAPIHandler(BaseHTTPRequestHandler):
             
             if not fecha or not p_seguro or not p_arriesgado:
                 self.send_error(400, "Faltan campos obligatorios para registrar la combinada.")
+                return
+                
+            # Validar que no haya partidos repetidos dentro del mismo parley
+            def validar_duplicados(parley_data, nombre_tipo):
+                vistos = set()
+                for sel in parley_data.get("selecciones", []):
+                    p_norm = sel.get("partido", "").lower().replace(".", "").replace(" vs ", " vs. ").strip()
+                    if p_norm in vistos:
+                        return f"No se permite repetir el mismo partido en {nombre_tipo}: {sel.get('partido')}"
+                    vistos.add(p_norm)
+                return None
+
+            err_seguro = validar_duplicados(p_seguro, "la Combinada Segura")
+            if err_seguro:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": False, "error": err_seguro}).encode("utf-8"))
+                return
+
+            err_arriesgado = validar_duplicados(p_arriesgado, "la Combinada de Alto Valor")
+            if err_arriesgado:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": False, "error": err_arriesgado}).encode("utf-8"))
                 return
                 
             # Formatear JSON para picks del día

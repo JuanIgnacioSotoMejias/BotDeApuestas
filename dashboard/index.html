@@ -286,6 +286,12 @@
                         Selecciona los partidos disponibles o añade partidos de forma manual escribiendo sus nombres para realizar la combinación más probable.
                     </p>
                     
+                    <!-- Botones de selección masiva -->
+                    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                        <button type="button" id="btn-select-all-quiniela" class="btn-secondary" style="flex: 1; padding: 6px 12px; font-size: 0.8rem; background: rgba(255,255,255,0.02); border-color: rgba(255,255,255,0.1);">✅ Seleccionar Todo</button>
+                        <button type="button" id="btn-deselect-all-quiniela" class="btn-secondary" style="flex: 1; padding: 6px 12px; font-size: 0.8rem; background: rgba(255,255,255,0.02); border-color: rgba(255,255,255,0.1);">❌ Quitar Selecciones</button>
+                    </div>
+
                     <!-- Partidos del día -->
                     <div class="quiniela-matches-list" id="quiniela-matches-list" style="max-height: 350px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; margin-bottom: 25px; padding-right: 5px;">
                         <p class="loading-text">Cargando partidos de hoy...</p>
@@ -338,12 +344,13 @@
                                 <th style="padding: 12px 10px; text-align: center;">Local (1)</th>
                                 <th style="padding: 12px 10px; text-align: center;">Empate (X)</th>
                                 <th style="padding: 12px 10px; text-align: center;">Visitante (2)</th>
+                                <th style="padding: 12px 10px; max-width: 320px;">Análisis de Factores (Alineación, Clima, Bajas)</th>
                                 <th style="padding: 12px 10px;">Fuente del Análisis</th>
                             </tr>
                         </thead>
                         <tbody id="quiniela-individual-tbody">
                             <tr>
-                                <td colspan="5" class="loading-text" style="text-align: center; padding: 20px;">Aún no se ha realizado ningún análisis.</td>
+                                <td colspan="6" class="loading-text" style="text-align: center; padding: 20px;">Aún no se ha realizado ningún análisis.</td>
                             </tr>
                         </tbody>
                     </table>

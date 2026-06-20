@@ -33,6 +33,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     const containerQuinielaCombinations = document.getElementById("quiniela-combinations-container");
     const quinielaIndividualTbody = document.getElementById("quiniela-individual-tbody");
     const btnRecargarPartidosQuiniela = document.getElementById("btn-recargar-partidos-quiniela");
+    const btnSelectAllQuiniela = document.getElementById("btn-select-all-quiniela");
+    const btnDeselectAllQuiniela = document.getElementById("btn-deselect-all-quiniela");
     const inputManualLocal = document.getElementById("manual-local");
     const inputManualVisitante = document.getElementById("manual-visitante");
     const btnAddManualMatch = document.getElementById("btn-add-manual-match");
@@ -420,12 +422,33 @@ document.addEventListener("DOMContentLoaded", async () => {
         const selecciones = [];
         let cuotaTotal = 1.0;
         let probEstCombinada = 1.0;
+        
+        const partidosSet = new Set();
+        let duplicateFound = false;
+        let duplicateName = "";
 
-        rows.forEach(row => {
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
             const partido = row.querySelector(".sel-partido").value.trim();
             const pronostico = row.querySelector(".sel-pronostico").value.trim();
             const cuota = parseFloat(row.querySelector(".sel-cuota").value);
             const probabilidadVal = parseFloat(row.querySelector(".sel-probabilidad").value);
+
+            if (partido) {
+                // Normalizar nombre de partido para evitar diferencias en espacios, puntos, etc.
+                const partidoNorm = partido.toLowerCase()
+                    .replace(/\./g, "")
+                    .replace(/\s+/g, " ")
+                    .replace(/ vs /g, " vs. ")
+                    .trim();
+                
+                if (partidosSet.has(partidoNorm)) {
+                    duplicateFound = true;
+                    duplicateName = partido;
+                    break;
+                }
+                partidosSet.add(partidoNorm);
+            }
 
             const probImpVal = (1.0 / cuota) * 100;
             const difVal = probabilidadVal - probImpVal;
@@ -443,7 +466,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
             cuotaTotal *= cuota;
             probEstCombinada *= (probabilidadVal / 100.0);
-        });
+        }
+
+        if (duplicateFound) {
+            showToast(`No se permite repetir el mismo partido en una combinada: ${duplicateName}`, "error");
+            return null;
+        }
 
         const nombre = type === "seguro" ? "Combinada Segura" : "Combinada de Alto Valor";
         const riesgo = type === "seguro" ? "Bajo" : "Alto";
@@ -1694,6 +1722,20 @@ document.addEventListener("DOMContentLoaded", async () => {
             btnRecargarPartidosQuiniela.addEventListener("click", cargarPartidosQuiniela);
         }
         
+        if (btnSelectAllQuiniela) {
+            btnSelectAllQuiniela.addEventListener("click", () => {
+                listadoPartidosQuiniela.forEach(p => p.checked = true);
+                renderizarPartidosQuiniela();
+            });
+        }
+        
+        if (btnDeselectAllQuiniela) {
+            btnDeselectAllQuiniela.addEventListener("click", () => {
+                listadoPartidosQuiniela.forEach(p => p.checked = false);
+                renderizarPartidosQuiniela();
+            });
+        }
+        
         if (btnAddManualMatch) {
             btnAddManualMatch.addEventListener("click", () => {
                 const local = inputManualLocal.value.trim();
@@ -1741,7 +1783,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 btnCalcularQuiniela.disabled = true;
                 
                 containerQuinielaCombinations.innerHTML = `<p class="loading-text">🧠 Analizando probabilidades y ejecutando optimización Dijkstra-heap...</p>`;
-                quinielaIndividualTbody.innerHTML = `<tr><td colspan="5" class="loading-text">Cargando desglose...</td></tr>`;
+                quinielaIndividualTbody.innerHTML = `<tr><td colspan="6" class="loading-text">Cargando desglose...</td></tr>`;
                 
                 try {
                     const res = await fetch("/api/quiniela/calcular", {
@@ -1835,7 +1877,8 @@ document.addEventListener("DOMContentLoaded", async () => {
                     <div style="font-weight: 700; color: var(--accent-purple);">${match.prob_away}%</div>
                     <div class="quiniela-probability-bar-container"><div class="quiniela-probability-bar away" style="width: ${match.prob_away}%"></div></div>
                 </td>
-                <td style="padding: 12px 10px; color: var(--text-secondary); font-size: 0.85rem; text-align: left;">${match.fuente}</td>
+                <td style="padding: 12px 10px; color: var(--text-secondary); font-size: 0.85rem; max-width: 320px; text-align: left; line-height: 1.35;">${match.analisis_contextual || '-'}</td>
+                <td style="padding: 12px 10px; color: var(--text-muted); font-size: 0.8rem; text-align: left;">${match.fuente}</td>
             `;
             
             quinielaIndividualTbody.appendChild(tr);
